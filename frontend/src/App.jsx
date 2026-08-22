@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { MapContainer, TileLayer, Rectangle, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Rectangle, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
   Wind, Trees, Droplets, Thermometer, Sparkles, 
-  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick, Square, Pentagon, RotateCcw
 } from 'lucide-react';
 
 const LANDMARK_PRESETS = [
@@ -67,17 +67,26 @@ function MapController({ center, zoom }) {
   return null;
 }
 
-function MapClickHandler({ onSelectArea }) {
+function MapClickHandler({ onSelectArea, selectionMode, polygonPoints, setPolygonPoints }) {
   useMapEvents({
     click(e) {
       const lat = e.latlng.lat;
       const lng = e.latlng.lng;
-      const offset = 0.008; 
-      const newBounds = [
-        [lat - offset, lng - offset],
-        [lat + offset, lng + offset]
-      ];
-      onSelectArea(newBounds, lat, lng, `Target Point (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)`);
+
+      if (selectionMode === 'polygon') {
+        const nextPts = [...polygonPoints, [lat, lng]];
+        setPolygonPoints(nextPts);
+        if (nextPts.length >= 3) {
+          onSelectArea(null, lat, lng, `Custom Polygon (${nextPts.length} points)`, nextPts);
+        }
+      } else {
+        const offset = 0.008; 
+        const newBounds = [
+          [lat - offset, lng - offset],
+          [lat + offset, lng + offset]
+        ];
+        onSelectArea(newBounds, lat, lng, `Target Point (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)`, null);
+      }
     }
   });
   return null;
@@ -90,6 +99,8 @@ export default function App() {
     [26.9457, 75.8383],
     [26.9617, 75.8543]
   ]);
+  const [selectionMode, setSelectionMode] = useState('box'); // 'box' | 'polygon'
+  const [polygonPoints, setPolygonPoints] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -134,18 +145,24 @@ export default function App() {
     { time: '22:00', aqi: 275, pm25: 185 },
   ]);
 
-  const handleSelectArea = async (newBounds, lat, lng, locationLabel) => {
-    setBounds(newBounds);
+  const handleSelectArea = async (newBounds, lat, lng, locationLabel, polygonData = null) => {
+    if (newBounds) setBounds(newBounds);
     setProcessing(true);
     if (locationLabel) setActiveLocationName(locationLabel);
 
     try {
-      const payload = {
-        lat_min: Math.min(newBounds[0][0], newBounds[1][0]),
-        lat_max: Math.max(newBounds[0][0], newBounds[1][0]),
-        lng_min: Math.min(newBounds[0][1], newBounds[1][1]),
-        lng_max: Math.max(newBounds[0][1], newBounds[1][1])
-      };
+      let payload = {};
+      if (polygonData && polygonData.length >= 3) {
+        payload = { polygon: polygonData };
+      } else if (newBounds) {
+        payload = {
+          lat_min: Math.min(newBounds[0][0], newBounds[1][0]),
+          lat_max: Math.max(newBounds[0][0], newBounds[1][0]),
+          lng_min: Math.min(newBounds[0][1], newBounds[1][1]),
+          lng_max: Math.max(newBounds[0][1], newBounds[1][1])
+        };
+      }
+
       const res = await axios.post("http://localhost:8000/api/analyze-zone", payload);
       if (res.data?.status === "success") {
         const d = res.data;
@@ -210,6 +227,7 @@ export default function App() {
           [lat - offset, lng - offset],
           [lat + offset, lng + offset]
         ];
+        setPolygonPoints([]);
         handleSelectArea(newBounds, lat, lng, displayName);
         setSearchQuery("");
       } else {
@@ -226,12 +244,18 @@ export default function App() {
   const jumpToLocation = (preset) => {
     setMapCenter([preset.lat, preset.lng]);
     setMapZoom(preset.zoom);
+    setPolygonPoints([]);
     const offset = 0.008;
     const newBounds = [
       [preset.lat - offset, preset.lng - offset],
       [preset.lat + offset, preset.lng + offset]
     ];
     handleSelectArea(newBounds, preset.lat, preset.lng, preset.name);
+  };
+
+  const resetPolygon = () => {
+    setPolygonPoints([]);
+    handleSelectArea(bounds, mapCenter[0], mapCenter[1], activeLocationName);
   };
 
   return (
@@ -320,19 +344,61 @@ export default function App() {
               attribution='&copy; Esri World Imagery'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
-            <Rectangle bounds={bounds} pathOptions={{ color: '#10B981', weight: 2.5, fillOpacity: 0.25, dashArray: '5' }} />
+            {selectionMode === 'box' && (
+              <Rectangle bounds={bounds} pathOptions={{ color: '#10B981', weight: 2.5, fillOpacity: 0.25, dashArray: '5' }} />
+            )}
+            {selectionMode === 'polygon' && polygonPoints.length >= 3 && (
+              <Polygon positions={polygonPoints} pathOptions={{ color: '#38BDF8', weight: 2.5, fillOpacity: 0.35 }} />
+            )}
             <MapController center={mapCenter} zoom={mapZoom} />
-            <MapClickHandler onSelectArea={handleSelectArea} />
+            <MapClickHandler 
+              onSelectArea={handleSelectArea} 
+              selectionMode={selectionMode} 
+              polygonPoints={polygonPoints} 
+              setPolygonPoints={setPolygonPoints} 
+            />
           </MapContainer>
 
+          {/* Active Target Banner */}
           <div className="absolute top-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3.5 py-2 rounded-xl text-xs text-slate-200 shadow-xl flex items-center gap-2">
             <MapPin className="w-4 h-4 text-emerald-400" />
             Active: <span className="font-bold text-emerald-400">{activeLocationName}</span>
           </div>
 
+          {/* Selection Tool Mode Switcher (Phase 2 Upgrade) */}
+          <div className="absolute top-4 right-4 z-[1000] bg-slate-900/95 backdrop-blur border border-slate-700/90 p-1.5 rounded-xl shadow-xl flex items-center gap-1">
+            <button
+              onClick={() => { setSelectionMode('box'); setPolygonPoints([]); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                selectionMode === 'box' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <Square className="w-3.5 h-3.5" /> Box Zone
+            </button>
+            <button
+              onClick={() => { setSelectionMode('polygon'); setPolygonPoints([]); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                selectionMode === 'polygon' ? 'bg-sky-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <Pentagon className="w-3.5 h-3.5" /> Freehand Polygon
+            </button>
+            {selectionMode === 'polygon' && polygonPoints.length > 0 && (
+              <button
+                onClick={resetPolygon}
+                title="Reset Polygon Points"
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-lg transition"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
           <div className="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 shadow-lg flex items-center gap-1.5">
             <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
-            Click anywhere on map to reposition target zone
+            {selectionMode === 'box' 
+              ? 'Click anywhere on map to reposition target zone' 
+              : `Click 3+ points to define boundary (Points selected: ${polygonPoints.length})`}
           </div>
         </div>
 
