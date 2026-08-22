@@ -6,14 +6,14 @@ import {
 } from 'recharts';
 import { 
   Wind, Trees, Droplets, Thermometer, Sparkles, 
-  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick, Square, Pentagon, RotateCcw
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Square, Pentagon, RotateCcw, MousePointerClick, Sliders
 } from 'lucide-react';
 
 const LANDMARK_PRESETS = [
   { name: "Jal Mahal", lat: 26.9537, lng: 75.8463, zoom: 15 },
   { name: "Kukas", lat: 27.0338, lng: 75.8877, zoom: 14 },
   { name: "Pink City", lat: 26.9220, lng: 75.8267, zoom: 15 },
-  { name: "Mansarovar", lat: 26.8584, lng: 75.7675, zoom: 15 }
+  { name: "Lucknow", lat: 26.8467, lng: 80.9462, zoom: 14 }
 ];
 
 const DEFAULT_SPECIES = [
@@ -59,6 +59,57 @@ const DEFAULT_SPECIES = [
   }
 ];
 
+// Mathematical 5-Year Climate Projection Model
+const calculateSimulation = (year, telemetry) => {
+  const y = Number(year);
+  const baseAqi = telemetry.aqi || 178;
+  const baseCanopy = telemetry.canopy_pct || 18.5;
+  const treesNeeded = telemetry.trees_needed || 4150;
+  const dropPct = telemetry.pollution_drop_pct || 38;
+
+  if (y === 0) {
+    return {
+      year: 0,
+      stage: "Baseline (Current State)",
+      projectedAqi: baseAqi,
+      canopyPct: baseCanopy,
+      co2Offset: "0",
+      oxygenYield: "0",
+      coolingDelta: "0.0°C",
+      dropAmount: 0
+    };
+  }
+
+  const maturityFactor = Math.min(1, 0.15 + 0.85 * Math.pow(y / 5, 1.2));
+  const survivalFactor = 1 - (0.03 * (5 - y));
+
+  const aqiReduction = Math.round(baseAqi * (dropPct / 100) * maturityFactor);
+  const projectedAqi = Math.max(35, baseAqi - aqiReduction);
+  const targetCanopy = Math.min(48, baseCanopy + (24 * maturityFactor));
+  const totalO2 = Math.round(treesNeeded * 1800 * maturityFactor * survivalFactor);
+  const totalCo2 = Math.round(treesNeeded * 0.95 * maturityFactor * survivalFactor);
+  const cooling = (0.42 * y * maturityFactor).toFixed(1);
+
+  const stageLabels = {
+    1: "Sapling Establishment & Rooting",
+    2: "Early Foliage Growth & Bio-Trap Activation",
+    3: "Mid-Canopy Microclimate Formation",
+    4: "Advanced Dust Interception & Shading",
+    5: "Fully Mature Urban Carbon Sink"
+  };
+
+  return {
+    year: y,
+    stage: stageLabels[y] || "Mature Ecosystem",
+    projectedAqi,
+    canopyPct: Number(targetCanopy.toFixed(1)),
+    co2Offset: totalCo2.toLocaleString(),
+    oxygenYield: totalO2.toLocaleString(),
+    coolingDelta: `-${cooling}°C`,
+    dropAmount: aqiReduction
+  };
+};
+
 function MapController({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
@@ -99,7 +150,7 @@ export default function App() {
     [26.9457, 75.8383],
     [26.9617, 75.8543]
   ]);
-  const [selectionMode, setSelectionMode] = useState('box'); // 'box' | 'polygon'
+  const [selectionMode, setSelectionMode] = useState('box');
   const [polygonPoints, setPolygonPoints] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -107,43 +158,39 @@ export default function App() {
   const [activeLocationName, setActiveLocationName] = useState("Jal Mahal, Jaipur");
   const [processing, setProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState('diagnostics');
+  const [simulationYear, setSimulationYear] = useState(0);
   
   const [telemetry, setTelemetry] = useState({
-    aqi: 218,
-    aqi_status: "Very Unhealthy (Severe)",
-    pm25: 134.5,
-    humidity: 38,
-    temp: 34,
-    canopy_pct: 14.8,
-    plantable_area: 14200,
-    total_area: 48000,
-    current_trees: 112,
-    trees_needed: 620,
-    pollution_drop_pct: 38,
-    oxygen_yield: "12,09,000",
-    co2_offset: "651.0"
+    aqi: 0,
+    aqi_status: "Fetching Live Telemetry...",
+    pm25: 0,
+    humidity: 0,
+    temp: 0,
+    canopy_pct: 0,
+    plantable_area: 0,
+    total_area: 0,
+    current_trees: 0,
+    trees_needed: 0,
+    pollution_drop_pct: 0,
+    oxygen_yield: "0",
+    co2_offset: "0"
   });
 
   const [budgetData, setBudgetData] = useState({
     cost_per_tree_inr: 775,
-    total_budget_inr: 480500,
-    total_budget_lakhs: 4.81,
-    saplings_procurement_inr: 77500,
-    guards_and_infrastructure_inr: 198400,
-    labor_and_plantation_inr: 93000,
-    maintenance_first_year_inr: 111600,
+    total_budget_inr: 0,
+    total_budget_lakhs: 0,
+    saplings_procurement_inr: 0,
+    guards_and_infrastructure_inr: 0,
+    labor_and_plantation_inr: 0,
+    maintenance_first_year_inr: 0,
     estimated_completion_days: 14
   });
 
   const [speciesList, setSpeciesList] = useState(DEFAULT_SPECIES);
+  const [chartData, setChartData] = useState([]);
 
-  const [chartData, setChartData] = useState([
-    { time: '06:00', aqi: 170, pm25: 98 },
-    { time: '10:00', aqi: 245, pm25: 155 },
-    { time: '14:00', aqi: 218, pm25: 134 },
-    { time: '18:00', aqi: 260, pm25: 172 },
-    { time: '22:00', aqi: 275, pm25: 185 },
-  ]);
+  const simData = calculateSimulation(simulationYear, telemetry);
 
   const handleSelectArea = async (newBounds, lat, lng, locationLabel, polygonData = null) => {
     if (newBounds) setBounds(newBounds);
@@ -163,12 +210,13 @@ export default function App() {
         };
       }
 
-      const res = await axios.post("http://localhost:8000/api/analyze-zone", payload);
-      if (res.data?.status === "success") {
+      const res = await axios.post("http://127.0.0.1:8000/api/analyze-zone", payload);
+      if (res.data && res.data.status === "success") {
         const d = res.data;
         if (d.location_name) {
           setActiveLocationName(d.location_name);
         }
+        
         setTelemetry({
           aqi: d.telemetry.aqi,
           aqi_status: d.telemetry.aqi_status || "Active Sensor Feed",
@@ -185,20 +233,20 @@ export default function App() {
           co2_offset: d.action_plan.total_co2_offset_tons || 0
         });
 
-        if (d.action_plan.budget_breakdown) {
-          setBudgetData(d.action_plan.budget_breakdown);
-        }
         if (d.telemetry.hourly_curve && d.telemetry.hourly_curve.length > 0) {
-          setChartData(d.telemetry.hourly_curve);
+          setChartData([...d.telemetry.hourly_curve]);
+        }
+        if (d.action_plan.budget_breakdown) {
+          setBudgetData({ ...d.action_plan.budget_breakdown });
         }
         if (d.action_plan.recommended_species && d.action_plan.recommended_species.length > 0) {
-          setSpeciesList(d.action_plan.recommended_species);
+          setSpeciesList([...d.action_plan.recommended_species]);
         }
       }
     } catch (e) {
-      console.warn("Backend local fallback active.", e);
+      console.error("Backend request failed:", e);
     } finally {
-      setTimeout(() => setProcessing(false), 500);
+      setTimeout(() => setProcessing(false), 300);
     }
   };
 
@@ -221,7 +269,7 @@ export default function App() {
         const displayName = place.display_name.split(',')[0];
 
         setMapCenter([lat, lng]);
-        setMapZoom(15);
+        setMapZoom(14);
         const offset = 0.008;
         const newBounds = [
           [lat - offset, lng - offset],
@@ -231,11 +279,11 @@ export default function App() {
         handleSelectArea(newBounds, lat, lng, displayName);
         setSearchQuery("");
       } else {
-        alert("Location not found! Try another landmark or area name.");
+        alert("Location not found! Try another city/landmark name.");
       }
     } catch (err) {
       console.error("Geocoding failed", err);
-      alert("Error finding location. Please try again.");
+      alert("Error finding location.");
     } finally {
       setSearching(false);
     }
@@ -251,11 +299,6 @@ export default function App() {
       [preset.lat + offset, preset.lng + offset]
     ];
     handleSelectArea(newBounds, preset.lat, preset.lng, preset.name);
-  };
-
-  const resetPolygon = () => {
-    setPolygonPoints([]);
-    handleSelectArea(bounds, mapCenter[0], mapCenter[1], activeLocationName);
   };
 
   return (
@@ -285,7 +328,7 @@ export default function App() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search any place (e.g. Kukas, Jal Mahal, Connaught Place)..."
+              placeholder="Search any place (e.g. Lucknow, Kukas, Connaught Place)..."
               className="w-full pl-10 pr-24 py-2 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
             />
             <button
@@ -365,7 +408,7 @@ export default function App() {
             Active: <span className="font-bold text-emerald-400">{activeLocationName}</span>
           </div>
 
-          {/* Selection Tool Mode Switcher (Phase 2 Upgrade) */}
+          {/* Selection Tool Mode Switcher */}
           <div className="absolute top-4 right-4 z-[1000] bg-slate-900/95 backdrop-blur border border-slate-700/90 p-1.5 rounded-xl shadow-xl flex items-center gap-1">
             <button
               onClick={() => { setSelectionMode('box'); setPolygonPoints([]); }}
@@ -385,7 +428,7 @@ export default function App() {
             </button>
             {selectionMode === 'polygon' && polygonPoints.length > 0 && (
               <button
-                onClick={resetPolygon}
+                onClick={() => { setPolygonPoints([]); handleSelectArea(bounds, mapCenter[0], mapCenter[1], activeLocationName); }}
                 title="Reset Polygon Points"
                 className="p-1.5 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-lg transition"
               >
@@ -511,6 +554,92 @@ export default function App() {
           {(activeTab === 'solution' || window.matchMedia('print').matches) && (
             <div className="space-y-6">
               
+              {/* NEW: TIME-LAPSE CLIMATE IMPACT SIMULATION SLIDER */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-950/40 via-[#0e162a] to-emerald-950/30 border border-indigo-500/40 shadow-xl space-y-4 print:border-gray-300 print:bg-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                      <Sliders className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-gray-900">
+                        5-Year Climate Twin Simulation
+                      </h3>
+                      <p className="text-[11px] text-slate-400 print:text-gray-600">
+                        Slide timeline to project environmental recovery post-plantation
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                    {simulationYear === 0 ? "Year 0 (Today)" : `Year +${simulationYear} Forecast`}
+                  </span>
+                </div>
+
+                {/* Range Slider */}
+                <div className="pt-2 px-1">
+                  <input
+                    type="range"
+                    min="0"
+                    max="5"
+                    step="1"
+                    value={simulationYear}
+                    onChange={(e) => setSimulationYear(Number(e.target.value))}
+                    className="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                  />
+                  <div className="flex justify-between text-[11px] text-slate-400 font-mono mt-2">
+                    <span className={simulationYear === 0 ? "text-emerald-400 font-bold" : ""}>Yr 0 (Base)</span>
+                    <span className={simulationYear === 1 ? "text-emerald-400 font-bold" : ""}>Yr 1 (Sapling)</span>
+                    <span className={simulationYear === 2 ? "text-emerald-400 font-bold" : ""}>Yr 2</span>
+                    <span className={simulationYear === 3 ? "text-emerald-400 font-bold" : ""}>Yr 3 (Canopy)</span>
+                    <span className={simulationYear === 4 ? "text-emerald-400 font-bold" : ""}>Yr 4</span>
+                    <span className={simulationYear === 5 ? "text-emerald-400 font-bold" : ""}>Yr 5 (Mature)</span>
+                  </div>
+                </div>
+
+                {/* Ecological Stage Description */}
+                <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
+                  <span className="text-xs text-slate-400">Ecological Progression: </span>
+                  <span className="text-xs font-bold text-emerald-400">{simData.stage}</span>
+                </div>
+
+                {/* Dynamic Projected Metric Cards */}
+                <div className="grid grid-cols-4 gap-2.5 pt-1 text-center">
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block uppercase">Projected AQI</span>
+                    <span className="text-lg font-black font-mono text-emerald-400">
+                      {simData.projectedAqi}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">
+                      {simulationYear === 0 ? "Baseline" : `Drop: -${simData.dropAmount}`}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block uppercase">Green Canopy</span>
+                    <span className="text-lg font-black font-mono text-teal-300">
+                      {simData.canopyPct}%
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">Target Coverage</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block uppercase">Surface Cooling</span>
+                    <span className="text-lg font-black font-mono text-sky-400">
+                      {simData.coolingDelta}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">Microclimate Drop</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block uppercase">O₂ Produced</span>
+                    <span className="text-lg font-black font-mono text-green-400">
+                      {simData.oxygenYield ? (simulationYear === 0 ? "0" : simData.oxygenYield.slice(0, 4) + "k") : "0"}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">kg O₂/year</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Capacity Deficit Card */}
               <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-[#0e162a] to-[#0e162a] border border-emerald-500/30 space-y-4 print:border-gray-300 print:bg-gray-100">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider print:text-emerald-700">
@@ -586,7 +715,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Native Species Recommendations */}
+              {/* High Oxygen Native Species */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-gray-900">High Oxygen Native Species</h3>
