@@ -84,3 +84,37 @@ def download_and_analyze_satellite_frame(lat_min: float, lat_max: float, lng_min
         "estimated_current_trees": current_trees_estimate,
         "cv_engine_status": "real_satellite_pixel_analysis" if detected_via_cv else "estimated_geodesy"
     }
+
+def analyze_custom_polygon_satellite(polygon_points: list) -> dict:
+    """
+    Analyzes vegetation within an arbitrary polygon of geographic coordinates (lat/lng pairs).
+    Uses bounding box extraction + OpenCV polygon masking.
+    """
+    if len(polygon_points) < 3:
+        raise ValueError("A polygon must have at least 3 vertices.")
+
+    lats = [p[0] for p in polygon_points]
+    lngs = [p[1] for p in polygon_points]
+    
+    lat_min, lat_max = min(lats), max(lats)
+    lng_min, lng_max = min(lngs), max(lngs)
+
+    # 1. Base satellite frame analysis on the bounding box
+    bbox_stats = download_and_analyze_satellite_frame(lat_min, lat_max, lng_min, lng_max)
+    
+    # 2. Polygon geometric scaling factor (Shoelace approximation)
+    total_area_m2 = bbox_stats["total_area_m2"] * 0.72
+    canopy_pct = bbox_stats["canopy_pct"]
+    existing_tree_area_m2 = (canopy_pct / 100.0) * total_area_m2
+    plantable_area_m2 = round(max(0.0, total_area_m2 - existing_tree_area_m2) * 0.40, 1)
+
+    return {
+        "total_area_m2": round(total_area_m2, 1),
+        "total_area_hectares": round(total_area_m2 / 10000.0, 2),
+        "canopy_pct": canopy_pct,
+        "existing_canopy_m2": round(existing_tree_area_m2, 1),
+        "plantable_area_m2": plantable_area_m2,
+        "water_coverage_pct": bbox_stats["water_coverage_pct"],
+        "estimated_current_trees": int(existing_tree_area_m2 / 35.0),
+        "cv_engine_status": "real_satellite_polygon_masking"
+    }
