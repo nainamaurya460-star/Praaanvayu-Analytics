@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { MapContainer, TileLayer, Rectangle, Polygon, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Rectangle, Polygon, ImageOverlay, useMapEvents, useMap } from 'react-leaflet';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
   Wind, Trees, Droplets, Thermometer, Sparkles, 
-  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick, Square, Pentagon, RotateCcw
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick, Square, Pentagon, RotateCcw, Eye, EyeOff, Waves
 } from 'lucide-react';
 
 const LANDMARK_PRESETS = [
@@ -59,6 +59,43 @@ const DEFAULT_SPECIES = [
   }
 ];
 
+function generateClientFallbackHeatmap(canopyPct = 15, waterPct = 12) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  
+  // Crimson Red default (Deficit / Urban density)
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
+  ctx.fillRect(0, 0, 256, 256);
+  
+  // Emerald Green Clusters (Canopy)
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.75)';
+  const numClusters = Math.floor((canopyPct / 100) * 45) + 5;
+  for (let i = 0; i < numClusters; i++) {
+    const cx = Math.random() * 230 + 10;
+    const cy = Math.random() * 230 + 10;
+    const rad = Math.random() * 25 + 12;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Cobalt Blue Clusters / Bands (Rivers & Water Bodies)
+  ctx.fillStyle = 'rgba(59, 130, 246, 0.80)';
+  const numWater = Math.floor((waterPct / 100) * 20) + 2;
+  for (let i = 0; i < numWater; i++) {
+    const wx = Math.random() * 220 + 20;
+    const wy = Math.random() * 220 + 20;
+    const wrad = Math.random() * 35 + 18;
+    ctx.beginPath();
+    ctx.arc(wx, wy, wrad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
 function MapController({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
@@ -99,8 +136,10 @@ export default function App() {
     [26.9457, 75.8383],
     [26.9617, 75.8543]
   ]);
-  const [selectionMode, setSelectionMode] = useState('box'); // 'box' | 'polygon'
+  const [selectionMode, setSelectionMode] = useState('box');
   const [polygonPoints, setPolygonPoints] = useState([]);
+  const [heatmapOverlay, setHeatmapOverlay] = useState(() => generateClientFallbackHeatmap(18, 14));
+  const [showHeatmap, setShowHeatmap] = useState(true);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -115,6 +154,8 @@ export default function App() {
     humidity: 38,
     temp: 34,
     canopy_pct: 14.8,
+    water_pct: 12.4,
+    water_surface_m2: 5952,
     plantable_area: 14200,
     total_area: 48000,
     current_trees: 112,
@@ -169,6 +210,13 @@ export default function App() {
         if (d.location_name) {
           setActiveLocationName(d.location_name);
         }
+
+        if (d.vegetation?.heatmap_overlay_base64) {
+          setHeatmapOverlay(d.vegetation.heatmap_overlay_base64);
+        } else {
+          setHeatmapOverlay(generateClientFallbackHeatmap(d.vegetation?.canopy_pct || 15, d.vegetation?.water_coverage_pct || 10));
+        }
+
         setTelemetry({
           aqi: d.telemetry.aqi,
           aqi_status: d.telemetry.aqi_status || "Active Sensor Feed",
@@ -176,6 +224,8 @@ export default function App() {
           humidity: d.telemetry.humidity,
           temp: d.telemetry.temperature,
           canopy_pct: d.vegetation.canopy_pct,
+          water_pct: d.vegetation.water_coverage_pct || 0,
+          water_surface_m2: d.vegetation.water_surface_m2 || Math.round((d.vegetation.water_coverage_pct || 0) * d.vegetation.total_area_m2 / 100),
           plantable_area: d.vegetation.plantable_area_m2,
           total_area: d.vegetation.total_area_m2,
           current_trees: d.vegetation.estimated_current_trees || Math.round(d.vegetation.existing_canopy_m2 / 35),
@@ -197,8 +247,9 @@ export default function App() {
       }
     } catch (e) {
       console.warn("Backend local fallback active.", e);
+      setHeatmapOverlay(generateClientFallbackHeatmap(14, 10));
     } finally {
-      setTimeout(() => setProcessing(false), 500);
+      setProcessing(false);
     }
   };
 
@@ -206,36 +257,55 @@ export default function App() {
     handleSelectArea(bounds, 26.9537, 75.8463, "Jal Mahal, Jaipur");
   }, []);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
+  const executeSearch = async (targetText) => {
+    const query = (targetText || searchQuery || "").trim();
+    if (!query) return;
+
     setSearching(true);
     try {
-      const res = await axios.get(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`
-      );
-      if (res.data && res.data.length > 0) {
-        const place = res.data[0];
-        const lat = parseFloat(place.lat);
-        const lng = parseFloat(place.lon);
-        const displayName = place.display_name.split(',')[0];
+      const encoded = encodeURIComponent(query);
+      let lat = null, lng = null, displayName = query;
 
-        setMapCenter([lat, lng]);
-        setMapZoom(15);
+      try {
+        const pRes = await axios.get(`https://photon.komoot.io/api/?q=${encoded}&limit=1`, { timeout: 4000 });
+        if (pRes.data?.features?.length > 0) {
+          const f = pRes.data.features[0];
+          lng = f.geometry.coordinates[0];
+          lat = f.geometry.coordinates[1];
+          displayName = f.properties.name || f.properties.city || query;
+        }
+      } catch (err) {
+        console.warn("Photon fallback", err);
+      }
+
+      if (!lat || !lng) {
+        const osmRes = await axios.get(`https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1`, { timeout: 4000 });
+        if (osmRes.data && osmRes.data.length > 0) {
+          lat = parseFloat(osmRes.data[0].lat);
+          lng = parseFloat(osmRes.data[0].lon);
+          displayName = osmRes.data[0].display_name.split(',')[0];
+        }
+      }
+
+      if (lat && lng) {
         const offset = 0.008;
         const newBounds = [
           [lat - offset, lng - offset],
           [lat + offset, lng + offset]
         ];
+        setMapCenter([lat, lng]);
+        setMapZoom(15);
+        setBounds(newBounds);
         setPolygonPoints([]);
+        setActiveLocationName(displayName);
         handleSelectArea(newBounds, lat, lng, displayName);
         setSearchQuery("");
       } else {
-        alert("Location not found! Try another landmark or area name.");
+        alert(`Location "${query}" nahi mili! Kripya kisi prasiddh shahar ya landmark ka naam dalein.`);
       }
     } catch (err) {
-      console.error("Geocoding failed", err);
-      alert("Error finding location. Please try again.");
+      console.error("Search failed", err);
+      alert("Search request complete nahi ho payi. Ek baar internet check karein.");
     } finally {
       setSearching(false);
     }
@@ -245,6 +315,7 @@ export default function App() {
     setMapCenter([preset.lat, preset.lng]);
     setMapZoom(preset.zoom);
     setPolygonPoints([]);
+    setSearchQuery("");
     const offset = 0.008;
     const newBounds = [
       [preset.lat - offset, preset.lng - offset],
@@ -272,31 +343,36 @@ export default function App() {
               Welcome to <span className="text-emerald-400">PraanVayu</span> Analytics Engine
             </h1>
             <p className="text-[11px] text-slate-400">
-              Select your targeted area on the map to save earth & fight pollution.
+              Precision Canopy Deficit, Atmospheric Telemetry & River Basin Mapping.
             </p>
           </div>
         </div>
 
-        {/* Global Search Bar */}
-        <form onSubmit={handleSearch} className="flex-1 max-w-md relative">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-emerald-400 absolute left-3.5 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search any place (e.g. Kukas, Jal Mahal, Connaught Place)..."
-              className="w-full pl-10 pr-24 py-2 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-            />
-            <button
-              type="submit"
-              disabled={searching}
-              className="absolute right-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-xs font-bold transition flex items-center gap-1 disabled:opacity-50"
-            >
-              {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Search"}
-            </button>
-          </div>
-        </form>
+        {/* Search Bar */}
+        <div className="flex-1 max-w-md relative flex items-center">
+          <Search className="w-4 h-4 text-emerald-400 absolute left-3.5 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                executeSearch();
+              }
+            }}
+            placeholder="Search city, river bank, landmark (e.g. Jal Mahal, Kukas)..."
+            className="w-full pl-10 pr-24 py-2 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+          />
+          <button
+            type="button"
+            onClick={() => executeSearch()}
+            disabled={searching}
+            className="absolute right-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+          >
+            {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Search"}
+          </button>
+        </div>
 
         {/* Presets & Export */}
         <div className="flex items-center gap-2 shrink-0">
@@ -330,7 +406,7 @@ export default function App() {
       {processing && (
         <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 px-4 py-2 font-black text-center text-sm shadow-md animate-pulse flex items-center justify-center gap-2 print:hidden">
           <Sparkles className="w-5 h-5" />
-          Scanning satellite pixels & executing afforestation models for {activeLocationName}...
+          Analyzing satellite pixels, river boundaries & canopy models for {activeLocationName}...
         </div>
       )}
 
@@ -344,12 +420,24 @@ export default function App() {
               attribution='&copy; Esri World Imagery'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
+            
+            {/* Heatmap Overlay with Greenery, Concrete Deficit & Blue Water */}
+            {showHeatmap && heatmapOverlay && (
+              <ImageOverlay
+                url={heatmapOverlay}
+                bounds={bounds}
+                opacity={0.72}
+              />
+            )}
+
+            {/* Bounding Borders */}
             {selectionMode === 'box' && (
-              <Rectangle bounds={bounds} pathOptions={{ color: '#10B981', weight: 2.5, fillOpacity: 0.25, dashArray: '5' }} />
+              <Rectangle bounds={bounds} pathOptions={{ color: '#38BDF8', weight: 2, fillOpacity: 0, dashArray: '4' }} />
             )}
             {selectionMode === 'polygon' && polygonPoints.length >= 3 && (
-              <Polygon positions={polygonPoints} pathOptions={{ color: '#38BDF8', weight: 2.5, fillOpacity: 0.35 }} />
+              <Polygon positions={polygonPoints} pathOptions={{ color: '#38BDF8', weight: 2, fillOpacity: 0.15 }} />
             )}
+
             <MapController center={mapCenter} zoom={mapZoom} />
             <MapClickHandler 
               onSelectArea={handleSelectArea} 
@@ -359,46 +447,80 @@ export default function App() {
             />
           </MapContainer>
 
-          {/* Active Target Banner */}
-          <div className="absolute top-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3.5 py-2 rounded-xl text-xs text-slate-200 shadow-xl flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-emerald-400" />
-            Active: <span className="font-bold text-emerald-400">{activeLocationName}</span>
-          </div>
+          {/* Location & Vision Controls */}
+          <div className="absolute top-4 left-4 right-4 z-[1000] flex justify-between items-center pointer-events-none">
+            <div className="bg-slate-900/90 backdrop-blur border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-slate-200 shadow-xl flex items-center gap-2 pointer-events-auto">
+              <MapPin className="w-4 h-4 text-emerald-400" />
+              Active: <span className="font-bold text-emerald-400">{activeLocationName}</span>
+            </div>
 
-          {/* Selection Tool Mode Switcher (Phase 2 Upgrade) */}
-          <div className="absolute top-4 right-4 z-[1000] bg-slate-900/95 backdrop-blur border border-slate-700/90 p-1.5 rounded-xl shadow-xl flex items-center gap-1">
-            <button
-              onClick={() => { setSelectionMode('box'); setPolygonPoints([]); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                selectionMode === 'box' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <Square className="w-3.5 h-3.5" /> Box Zone
-            </button>
-            <button
-              onClick={() => { setSelectionMode('polygon'); setPolygonPoints([]); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                selectionMode === 'polygon' ? 'bg-sky-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <Pentagon className="w-3.5 h-3.5" /> Freehand Polygon
-            </button>
-            {selectionMode === 'polygon' && polygonPoints.length > 0 && (
+            <div className="bg-slate-900/95 backdrop-blur border border-slate-700 p-1 rounded-xl shadow-xl flex items-center gap-1.5 pointer-events-auto">
               <button
-                onClick={resetPolygon}
-                title="Reset Polygon Points"
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-lg transition"
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  showHeatmap ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold' : 'text-slate-400 hover:bg-slate-800'
+                }`}
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                {showHeatmap ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-500" />}
+                AI Vision: {showHeatmap ? 'ON' : 'OFF'}
               </button>
-            )}
+
+              <div className="w-[1px] h-3.5 bg-slate-700" />
+
+              <button
+                onClick={() => { setSelectionMode('box'); setPolygonPoints([]); }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  selectionMode === 'box' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <Square className="w-3 h-3 inline mr-1" /> Box
+              </button>
+              <button
+                onClick={() => { setSelectionMode('polygon'); setPolygonPoints([]); }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  selectionMode === 'polygon' ? 'bg-sky-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <Pentagon className="w-3 h-3 inline mr-1" /> Polygon
+              </button>
+              {selectionMode === 'polygon' && polygonPoints.length > 0 && (
+                <button
+                  onClick={resetPolygon}
+                  title="Reset Polygon"
+                  className="p-1 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-lg transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 shadow-lg flex items-center gap-1.5">
-            <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
-            {selectionMode === 'box' 
-              ? 'Click anywhere on map to reposition target zone' 
-              : `Click 3+ points to define boundary (Points selected: ${polygonPoints.length})`}
+          {/* Bottom Legends */}
+          <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2">
+            <div className="bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 shadow-lg flex items-center gap-1.5">
+              <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
+              {selectionMode === 'box' 
+                ? 'Click anywhere on map to reposition target zone' 
+                : `Click 3+ points to define boundary (Selected: ${polygonPoints.length})`}
+            </div>
+
+            {/* 3-Color AI Vision Legend */}
+            {showHeatmap && (
+              <div className="bg-slate-900/95 backdrop-blur border border-slate-700 px-3 py-2 rounded-xl text-[10px] text-slate-300 shadow-xl flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block shadow-sm"></span>
+                  <span className="font-semibold text-emerald-400">Greenery / Canopy</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-blue-500 inline-block shadow-sm"></span>
+                  <span className="font-semibold text-blue-400">Rivers & Water Bodies</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-red-500 inline-block shadow-sm"></span>
+                  <span className="font-semibold text-red-400">Target Deficit (Built-up)</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -414,7 +536,7 @@ export default function App() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Activity className="w-4 h-4" /> 1. Pollution & Telemetry Level
+              <Activity className="w-4 h-4" /> 1. Pollution & Environmental Diagnostics
             </button>
             <button
               onClick={() => setActiveTab('solution')}
@@ -424,7 +546,7 @@ export default function App() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Trees className="w-4 h-4" /> 2. Solving Steps & Procurement
+              <Trees className="w-4 h-4" /> 2. Afforestation Plan & River Buffers
             </button>
           </div>
 
@@ -454,11 +576,13 @@ export default function App() {
 
                 <div className="p-4 rounded-2xl bg-[#0e162a] border border-blue-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
                   <div className="flex justify-between items-center text-slate-400 text-xs print:text-gray-600">
-                    <span>Humidity</span>
-                    <Droplets className="w-4 h-4 text-blue-400" />
+                    <span>River & Water Coverage</span>
+                    <Waves className="w-4 h-4 text-blue-400" />
                   </div>
-                  <div className="text-3xl font-black text-blue-400 font-mono mt-2">{telemetry.humidity}%</div>
-                  <span className="text-xs text-slate-400 mt-2 block print:text-gray-600">Atmospheric Moisture</span>
+                  <div className="text-3xl font-black text-blue-400 font-mono mt-2">{telemetry.water_pct}%</div>
+                  <span className="text-xs text-slate-400 mt-2 block print:text-gray-600 font-mono">
+                    {telemetry.water_surface_m2 ? `${Math.round(telemetry.water_surface_m2).toLocaleString()} m² Water Basin` : 'Surface Moisture'}
+                  </span>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-[#0e162a] border border-orange-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
@@ -590,7 +714,7 @@ export default function App() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-gray-900">High Oxygen Native Species</h3>
-                  <span className="text-xs text-emerald-400 font-mono font-semibold print:text-emerald-700">Ranked by O₂ Yield</span>
+                  <span className="text-xs text-emerald-400 font-mono font-semibold print:text-emerald-700">Ranked by O₂ Yield & Riparian Shield</span>
                 </div>
 
                 <div className="space-y-4">
