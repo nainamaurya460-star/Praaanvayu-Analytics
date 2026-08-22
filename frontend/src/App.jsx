@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { MapContainer, TileLayer, Rectangle, useMapEvents, useMap } from 'react-leaflet';
 import { 
@@ -23,17 +23,17 @@ const DEFAULT_SPECIES = [
     image: "https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&w=600&q=80",
     oxygen_kg_year: 2400,
     co2_sink_kg_year: 1200,
-    badge: "24/7 Oxygen Producer (CAM)",
+    badge: "24/7 Oxygen Sink",
     suitability: "Ideal for broad avenues, urban plazas, and lake perimeters"
   },
   {
-    name: "Khejri (Prosopis cineraria)",
+    name: "Khejri (State Tree)",
     scientific: "Prosopis cineraria",
     image: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=600&q=80",
     oxygen_kg_year: 1650,
     co2_sink_kg_year: 900,
-    badge: "State Tree of Rajasthan",
-    suitability: "Thrives in dry, semi-arid terrain with zero irrigation"
+    badge: "Extreme Drought Hardy",
+    suitability: "Essential for dry semi-arid land & soil binding"
   },
   {
     name: "Neem (Azadirachta indica)",
@@ -42,7 +42,7 @@ const DEFAULT_SPECIES = [
     oxygen_kg_year: 1850,
     co2_sink_kg_year: 950,
     badge: "Natural Bio-Filter",
-    suitability: "Dense dust & PM2.5 trapping near industrial highways"
+    suitability: "High dust and PM2.5 trapping near highways"
   },
   {
     name: "Arjun (Terminalia arjuna)",
@@ -51,14 +51,14 @@ const DEFAULT_SPECIES = [
     oxygen_kg_year: 1950,
     co2_sink_kg_year: 1100,
     badge: "Riparian Specialist",
-    suitability: "Recommended along lake banks & river drainage corridors"
+    suitability: "Lake banks, ponds & high moisture ground"
   }
 ];
 
 function MapController({ center, zoom }) {
   const map = useMap();
-  React.useEffect(() => {
-    map.flyTo(center, zoom, { duration: 1.5 });
+  useEffect(() => {
+    map.flyTo(center, zoom, { duration: 1.2 });
   }, [center, zoom, map]);
   return null;
 }
@@ -137,7 +137,7 @@ export default function App() {
         }
         setTelemetry({
           aqi: d.telemetry.aqi,
-          aqi_status: d.telemetry.aqi_status || "Active Telemetry",
+          aqi_status: d.telemetry.aqi_status || "Active Sensor Feed",
           pm25: d.telemetry.pm25,
           humidity: d.telemetry.humidity,
           temp: d.telemetry.temperature,
@@ -159,9 +159,14 @@ export default function App() {
     } catch (e) {
       console.warn("Backend local fallback active.", e);
     } finally {
-      setTimeout(() => setProcessing(false), 600);
+      setTimeout(() => setProcessing(false), 500);
     }
   };
+
+  useEffect(() => {
+    // Initial auto-sync with backend on load
+    handleSelectArea(bounds, 26.9537, 75.8463, "Jal Mahal, Jaipur");
+  }, []);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -216,7 +221,7 @@ export default function App() {
     <div className="flex flex-col h-screen bg-[#070b14] text-slate-100 font-sans">
       
       {/* TOP HEADER */}
-      <header className="px-6 py-3 bg-[#0d1527] border-b border-emerald-950/60 shadow-xl flex items-center justify-between z-10 gap-4">
+      <header className="px-6 py-3 bg-[#0d1527] border-b border-emerald-950/60 shadow-xl flex items-center justify-between z-10 gap-4 print:hidden">
         <div className="flex items-center gap-3 shrink-0">
           <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
             <Trees className="w-6 h-6" />
@@ -252,7 +257,7 @@ export default function App() {
           </div>
         </form>
 
-        {/* Quick Presets & Export Button */}
+        {/* Quick Presets & Export */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
             {LANDMARK_PRESETS.map((loc, i) => (
@@ -272,28 +277,27 @@ export default function App() {
 
           <button
             onClick={handleExportPDF}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 rounded-xl text-xs font-bold transition shadow-sm"
-            title="Download Execution Report"
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold transition shadow-sm"
           >
             <Download className="w-4 h-4 text-emerald-400" />
-            <span>Export Report</span>
+            <span>Export Action Plan</span>
           </button>
         </div>
       </header>
 
       {/* PROCESSING TOAST BANNER */}
       {processing && (
-        <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 px-4 py-2 font-black text-center text-sm shadow-md animate-pulse flex items-center justify-center gap-2">
+        <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 px-4 py-2 font-black text-center text-sm shadow-md animate-pulse flex items-center justify-center gap-2 print:hidden">
           <Sparkles className="w-5 h-5" />
           You are very close to saving lives! Scanning satellite pixels for {activeLocationName}...
         </div>
       )}
 
       {/* MAIN VIEW */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden print:overflow-visible print:block">
         
         {/* LEFT: SATELLITE MAP */}
-        <div className="w-1/2 h-full relative border-r border-slate-800">
+        <div className="w-1/2 h-full relative border-r border-slate-800 print:hidden">
           <MapContainer center={mapCenter} zoom={mapZoom} className="w-full h-full">
             <TileLayer
               attribution='&copy; Esri World Imagery'
@@ -311,9 +315,9 @@ export default function App() {
         </div>
 
         {/* RIGHT: DASHBOARD TABS */}
-        <div className="w-1/2 h-full overflow-y-auto p-6 space-y-6 bg-[#0a0f1d]">
+        <div className="w-1/2 h-full overflow-y-auto p-6 space-y-6 bg-[#0a0f1d] print:w-full print:bg-white print:text-black print:p-0">
           
-          <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+          <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 print:hidden">
             <button
               onClick={() => setActiveTab('diagnostics')}
               className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
@@ -337,49 +341,49 @@ export default function App() {
           </div>
 
           {/* TAB 1: DIAGNOSTICS */}
-          {activeTab === 'diagnostics' && (
+          {(activeTab === 'diagnostics' || window.matchMedia('print').matches) && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-2xl bg-[#0e162a] border border-red-500/30 shadow-lg">
-                  <div className="flex justify-between items-center text-slate-400 text-xs">
+                <div className="p-4 rounded-2xl bg-[#0e162a] border border-red-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
+                  <div className="flex justify-between items-center text-slate-400 text-xs print:text-gray-600">
                     <span>Air Quality Index (AQI)</span>
                     <Wind className="w-4 h-4 text-red-400" />
                   </div>
                   <div className="text-3xl font-black text-red-400 font-mono mt-2">{telemetry.aqi}</div>
-                  <span className="inline-block mt-2 px-2 py-0.5 text-[11px] font-bold rounded bg-red-950/80 text-red-300 border border-red-800">
+                  <span className="inline-block mt-2 px-2 py-0.5 text-[11px] font-bold rounded bg-red-950/80 text-red-300 border border-red-800 print:bg-red-100 print:text-red-700">
                     {telemetry.aqi_status}
                   </span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-[#0e162a] border border-amber-500/30 shadow-lg">
-                  <div className="flex justify-between items-center text-slate-400 text-xs">
+                <div className="p-4 rounded-2xl bg-[#0e162a] border border-amber-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
+                  <div className="flex justify-between items-center text-slate-400 text-xs print:text-gray-600">
                     <span>PM2.5 Particulate</span>
                     <Activity className="w-4 h-4 text-amber-400" />
                   </div>
                   <div className="text-3xl font-black text-amber-400 font-mono mt-2">{telemetry.pm25}</div>
-                  <span className="text-xs text-slate-400 mt-2 block font-mono">µg/m³ (WHO Threshold Exceeded)</span>
+                  <span className="text-xs text-slate-400 mt-2 block font-mono print:text-gray-600">µg/m³ (WHO Limit Exceeded)</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-[#0e162a] border border-blue-500/30 shadow-lg">
-                  <div className="flex justify-between items-center text-slate-400 text-xs">
+                <div className="p-4 rounded-2xl bg-[#0e162a] border border-blue-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
+                  <div className="flex justify-between items-center text-slate-400 text-xs print:text-gray-600">
                     <span>Humidity</span>
                     <Droplets className="w-4 h-4 text-blue-400" />
                   </div>
                   <div className="text-3xl font-black text-blue-400 font-mono mt-2">{telemetry.humidity}%</div>
-                  <span className="text-xs text-slate-400 mt-2 block">Atmospheric Moisture</span>
+                  <span className="text-xs text-slate-400 mt-2 block print:text-gray-600">Atmospheric Moisture</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-[#0e162a] border border-orange-500/30 shadow-lg">
-                  <div className="flex justify-between items-center text-slate-400 text-xs">
+                <div className="p-4 rounded-2xl bg-[#0e162a] border border-orange-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
+                  <div className="flex justify-between items-center text-slate-400 text-xs print:text-gray-600">
                     <span>Ambient Temp</span>
                     <Thermometer className="w-4 h-4 text-orange-400" />
                   </div>
                   <div className="text-3xl font-black text-orange-400 font-mono mt-2">{telemetry.temp}°C</div>
-                  <span className="text-xs text-slate-400 mt-2 block">Surface Heat Index</span>
+                  <span className="text-xs text-slate-400 mt-2 block print:text-gray-600">Surface Heat Index</span>
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-[#0e162a] border border-slate-800 shadow-xl">
+              <div className="p-5 rounded-2xl bg-[#0e162a] border border-slate-800 shadow-xl print:hidden">
                 <div className="flex justify-between items-center mb-4">
                   <div>
                     <h3 className="text-sm font-bold text-slate-200">Diurnal Pollution Curve</h3>
@@ -407,7 +411,7 @@ export default function App() {
 
               <button
                 onClick={() => setActiveTab('solution')}
-                className="w-full py-4 rounded-2xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+                className="w-full py-4 rounded-2xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:brightness-110 transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 print:hidden"
               >
                 <span>Proceed to Solving Steps of Problem</span>
                 <ChevronRight className="w-5 h-5" />
@@ -416,75 +420,75 @@ export default function App() {
           )}
 
           {/* TAB 2: PROBLEM SOLVING */}
-          {activeTab === 'solution' && (
+          {(activeTab === 'solution' || window.matchMedia('print').matches) && (
             <div className="space-y-6">
               
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-[#0e162a] to-[#0e162a] border border-emerald-500/30 space-y-4">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-[#0e162a] to-[#0e162a] border border-emerald-500/30 space-y-4 print:border-gray-300 print:bg-gray-100">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider print:text-emerald-700">
                   <ShieldCheck className="w-4 h-4" /> Zone Capacity & Tree Deficit
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 pt-2 text-center">
-                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                    <span className="text-[11px] text-slate-400 block">Total Land Area</span>
-                    <span className="text-base font-bold font-mono text-white">{(telemetry.total_area / 10000).toFixed(2)} Ha</span>
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 print:bg-white">
+                    <span className="text-[11px] text-slate-400 block print:text-gray-500">Total Land Area</span>
+                    <span className="text-base font-bold font-mono text-white print:text-gray-900">{(telemetry.total_area / 10000).toFixed(2)} Ha</span>
                     <span className="text-[10px] text-slate-500 font-mono">({Math.round(telemetry.total_area).toLocaleString()} m²)</span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                    <span className="text-[11px] text-slate-400 block">Current Trees</span>
-                    <span className="text-base font-bold font-mono text-amber-400">{telemetry.current_trees} Existing</span>
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 print:bg-white">
+                    <span className="text-[11px] text-slate-400 block print:text-gray-500">Current Trees</span>
+                    <span className="text-base font-bold font-mono text-amber-400 print:text-amber-600">{telemetry.current_trees} Existing</span>
                     <span className="text-[10px] text-slate-500">Canopy: {telemetry.canopy_pct}%</span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-900/80 border border-emerald-600/40">
-                    <span className="text-[11px] text-emerald-300 block font-semibold">Trees Needed</span>
-                    <span className="text-base font-bold font-mono text-emerald-400">+{telemetry.trees_needed} Target</span>
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-emerald-600/40 print:bg-white">
+                    <span className="text-[11px] text-emerald-300 block font-semibold print:text-emerald-700">Trees Needed</span>
+                    <span className="text-base font-bold font-mono text-emerald-400 print:text-emerald-700">+{telemetry.trees_needed} Target</span>
                     <span className="text-[10px] text-emerald-500 font-mono">Open: {Math.round(telemetry.plantable_area).toLocaleString()} m²</span>
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-700/50 flex items-center justify-between text-xs text-slate-200">
+                <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-700/50 flex items-center justify-between text-xs text-slate-200 print:bg-emerald-50 print:text-emerald-900">
                   <span>Forecasted AQI Improvement after Plantation:</span>
-                  <span className="font-bold text-emerald-300 font-mono text-sm">~{telemetry.pollution_drop_pct}% Cleaner Air</span>
+                  <span className="font-bold text-emerald-300 font-mono text-sm print:text-emerald-700">~{telemetry.pollution_drop_pct}% Cleaner Air</span>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">High Oxygen Native Species</h3>
-                  <span className="text-xs text-emerald-400 font-mono font-semibold">Ranked by O₂ Yield</span>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-gray-900">High Oxygen Native Species</h3>
+                  <span className="text-xs text-emerald-400 font-mono font-semibold print:text-emerald-700">Ranked by O₂ Yield</span>
                 </div>
 
                 <div className="space-y-4">
                   {speciesList.map((tree, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-[#0e162a] border border-slate-800 flex gap-4 hover:border-emerald-500/50 transition">
+                    <div key={idx} className="p-4 rounded-2xl bg-[#0e162a] border border-slate-800 flex gap-4 hover:border-emerald-500/50 transition print:bg-white print:border-gray-300">
                       <img 
                         src={tree.image} 
                         alt={tree.name} 
-                        className="w-24 h-24 rounded-xl object-cover border border-slate-700 shadow-md flex-shrink-0"
+                        className="w-24 h-24 rounded-xl object-cover border border-slate-700 shadow-md flex-shrink-0 print:border-gray-200"
                       />
                       <div className="flex-1">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-bold text-white text-base">{tree.name}</h4>
-                            <span className="text-xs text-slate-400 italic">{tree.scientific}</span>
+                            <h4 className="font-bold text-white text-base print:text-gray-900">{tree.name}</h4>
+                            <span className="text-xs text-slate-400 italic print:text-gray-500">{tree.scientific}</span>
                           </div>
-                          <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 border border-emerald-700 text-emerald-300">
+                          <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 border border-emerald-700 text-emerald-300 print:bg-emerald-100 print:text-emerald-800">
                             {tree.badge}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 mt-3 text-xs bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                        <div className="grid grid-cols-2 gap-2 mt-3 text-xs bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80 print:bg-gray-50 print:border-gray-200">
                           <div>
-                            <span className="text-slate-400 text-[10px] block">O₂ Produced:</span>
-                            <span className="font-bold text-emerald-400 font-mono">{tree.oxygen_kg_year || 1800} kg/year</span>
+                            <span className="text-slate-400 text-[10px] block print:text-gray-500">O₂ Produced:</span>
+                            <span className="font-bold text-emerald-400 font-mono print:text-emerald-700">{tree.oxygen_kg_year || 1800} kg/year</span>
                           </div>
                           <div>
-                            <span className="text-slate-400 text-[10px] block">CO₂ Absorbed:</span>
-                            <span className="font-bold text-teal-300 font-mono">{tree.co2_sink_kg_year || 950} kg/year</span>
+                            <span className="text-slate-400 text-[10px] block print:text-gray-500">CO₂ Absorbed:</span>
+                            <span className="font-bold text-teal-300 font-mono print:text-teal-700">{tree.co2_sink_kg_year || 950} kg/year</span>
                           </div>
                         </div>
 
-                        <p className="text-[11px] text-emerald-400/90 mt-2 font-medium">📍 {tree.suitability}</p>
+                        <p className="text-[11px] text-emerald-400/90 mt-2 font-medium print:text-gray-600">📍 {tree.suitability}</p>
                       </div>
                     </div>
                   ))}
