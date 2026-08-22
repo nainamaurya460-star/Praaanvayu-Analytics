@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   Wind, Trees, Droplets, Thermometer, Sparkles, 
-  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers
 } from 'lucide-react';
 
 const LANDMARK_PRESETS = [
@@ -23,6 +23,7 @@ const DEFAULT_SPECIES = [
     image: "https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&w=600&q=80",
     oxygen_kg_year: 2400,
     co2_sink_kg_year: 1200,
+    cost_per_sapling_inr: 140,
     badge: "24/7 Oxygen Sink",
     suitability: "Ideal for broad avenues, urban plazas, and lake perimeters"
   },
@@ -32,6 +33,7 @@ const DEFAULT_SPECIES = [
     image: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=600&q=80",
     oxygen_kg_year: 1650,
     co2_sink_kg_year: 900,
+    cost_per_sapling_inr: 110,
     badge: "Extreme Drought Hardy",
     suitability: "Essential for dry semi-arid land & soil binding"
   },
@@ -41,6 +43,7 @@ const DEFAULT_SPECIES = [
     image: "https://images.unsplash.com/photo-1502082553048-f009c37129b9?auto=format&fit=crop&w=600&q=80",
     oxygen_kg_year: 1850,
     co2_sink_kg_year: 950,
+    cost_per_sapling_inr: 125,
     badge: "Natural Bio-Filter",
     suitability: "High dust and PM2.5 trapping near highways"
   },
@@ -50,6 +53,7 @@ const DEFAULT_SPECIES = [
     image: "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80",
     oxygen_kg_year: 1950,
     co2_sink_kg_year: 1100,
+    cost_per_sapling_inr: 130,
     badge: "Riparian Specialist",
     suitability: "Lake banks, ponds & high moisture ground"
   }
@@ -104,7 +108,20 @@ export default function App() {
     total_area: 48000,
     current_trees: 112,
     trees_needed: 620,
-    pollution_drop_pct: 38
+    pollution_drop_pct: 38,
+    oxygen_yield: "12,09,000",
+    co2_offset: "651.0"
+  });
+
+  const [budgetData, setBudgetData] = useState({
+    cost_per_tree_inr: 775,
+    total_budget_inr: 480500,
+    total_budget_lakhs: 4.81,
+    saplings_procurement_inr: 77500,
+    guards_and_infrastructure_inr: 198400,
+    labor_and_plantation_inr: 93000,
+    maintenance_first_year_inr: 111600,
+    estimated_completion_days: 14
   });
 
   const [speciesList, setSpeciesList] = useState(DEFAULT_SPECIES);
@@ -146,9 +163,14 @@ export default function App() {
           total_area: d.vegetation.total_area_m2,
           current_trees: d.vegetation.estimated_current_trees || Math.round(d.vegetation.existing_canopy_m2 / 35),
           trees_needed: d.action_plan.trees_needed,
-          pollution_drop_pct: d.action_plan.pollution_drop_pct
+          pollution_drop_pct: d.action_plan.pollution_drop_pct,
+          oxygen_yield: (d.action_plan.total_oxygen_yield_kg_per_year || 0).toLocaleString(),
+          co2_offset: d.action_plan.total_co2_offset_tons || 0
         });
 
+        if (d.action_plan.budget_breakdown) {
+          setBudgetData(d.action_plan.budget_breakdown);
+        }
         if (d.telemetry.hourly_curve && d.telemetry.hourly_curve.length > 0) {
           setChartData(d.telemetry.hourly_curve);
         }
@@ -164,7 +186,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Initial auto-sync with backend on load
     handleSelectArea(bounds, 26.9537, 75.8463, "Jal Mahal, Jaipur");
   }, []);
 
@@ -213,14 +234,10 @@ export default function App() {
     handleSelectArea(newBounds, preset.lat, preset.lng, preset.name);
   };
 
-  const handleExportPDF = () => {
-    window.print();
-  };
-
   return (
     <div className="flex flex-col h-screen bg-[#070b14] text-slate-100 font-sans">
       
-      {/* TOP HEADER */}
+      {/* HEADER */}
       <header className="px-6 py-3 bg-[#0d1527] border-b border-emerald-950/60 shadow-xl flex items-center justify-between z-10 gap-4 print:hidden">
         <div className="flex items-center gap-3 shrink-0">
           <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
@@ -236,7 +253,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Global Location Search Bar */}
+        {/* Global Search Bar */}
         <form onSubmit={handleSearch} className="flex-1 max-w-md relative">
           <div className="relative flex items-center">
             <Search className="w-4 h-4 text-emerald-400 absolute left-3.5 pointer-events-none" />
@@ -257,7 +274,7 @@ export default function App() {
           </div>
         </form>
 
-        {/* Quick Presets & Export */}
+        {/* Presets & Export */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
             {LANDMARK_PRESETS.map((loc, i) => (
@@ -276,7 +293,7 @@ export default function App() {
           </div>
 
           <button
-            onClick={handleExportPDF}
+            onClick={() => window.print()}
             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold transition shadow-sm"
           >
             <Download className="w-4 h-4 text-emerald-400" />
@@ -285,18 +302,18 @@ export default function App() {
         </div>
       </header>
 
-      {/* PROCESSING TOAST BANNER */}
+      {/* PROCESSING TOAST */}
       {processing && (
         <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 px-4 py-2 font-black text-center text-sm shadow-md animate-pulse flex items-center justify-center gap-2 print:hidden">
           <Sparkles className="w-5 h-5" />
-          You are very close to saving lives! Scanning satellite pixels for {activeLocationName}...
+          Scanning satellite pixels & executing afforestation models for {activeLocationName}...
         </div>
       )}
 
       {/* MAIN VIEW */}
       <div className="flex flex-1 overflow-hidden print:overflow-visible print:block">
         
-        {/* LEFT: SATELLITE MAP */}
+        {/* SATELLITE MAP */}
         <div className="w-1/2 h-full relative border-r border-slate-800 print:hidden">
           <MapContainer center={mapCenter} zoom={mapZoom} className="w-full h-full">
             <TileLayer
@@ -314,7 +331,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* RIGHT: DASHBOARD TABS */}
+        {/* DASHBOARD TABS */}
         <div className="w-1/2 h-full overflow-y-auto p-6 space-y-6 bg-[#0a0f1d] print:w-full print:bg-white print:text-black print:p-0">
           
           <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 print:hidden">
@@ -336,7 +353,7 @@ export default function App() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Trees className="w-4 h-4" /> 2. Solving Steps & High-O₂ Species
+              <Trees className="w-4 h-4" /> 2. Solving Steps & Procurement
             </button>
           </div>
 
@@ -419,13 +436,14 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 2: PROBLEM SOLVING */}
+          {/* TAB 2: PROBLEM SOLVING & MUNICIPAL BUDGET */}
           {(activeTab === 'solution' || window.matchMedia('print').matches) && (
             <div className="space-y-6">
               
+              {/* Capacity Deficit Card */}
               <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-[#0e162a] to-[#0e162a] border border-emerald-500/30 space-y-4 print:border-gray-300 print:bg-gray-100">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider print:text-emerald-700">
-                  <ShieldCheck className="w-4 h-4" /> Zone Capacity & Tree Deficit
+                  <ShieldCheck className="w-4 h-4" /> Zone Capacity & Ecological Deficit
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 pt-2 text-center">
@@ -447,11 +465,57 @@ export default function App() {
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-700/50 flex items-center justify-between text-xs text-slate-200 print:bg-emerald-50 print:text-emerald-900">
-                  <span>Forecasted AQI Improvement after Plantation:</span>
+                  <span>Forecasted AQI Improvement after Target Plantation:</span>
                   <span className="font-bold text-emerald-300 font-mono text-sm print:text-emerald-700">~{telemetry.pollution_drop_pct}% Cleaner Air</span>
                 </div>
               </div>
 
+              {/* Municipal Budget & Procurement Estimator */}
+              <div className="p-5 rounded-2xl bg-[#0e162a] border border-blue-500/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
+                    <IndianRupee className="w-4 h-4" /> Municipal Procurement & Budget Breakdown
+                  </div>
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+                    <Clock className="w-3.5 h-3.5 text-blue-400" /> ~{budgetData.estimated_completion_days} Days Execution
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800">
+                    <span className="text-xs text-slate-400 block">Total Project Budget</span>
+                    <span className="text-2xl font-black text-blue-400 font-mono mt-1">₹{budgetData.total_budget_lakhs} Lakhs</span>
+                    <span className="text-[10px] text-slate-500 block font-mono">₹{budgetData.cost_per_tree_inr} / tree all-inclusive</span>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800">
+                    <span className="text-xs text-slate-400 block">O₂ Yield & CO₂ Sink</span>
+                    <span className="text-base font-bold text-emerald-400 font-mono mt-1">+{telemetry.oxygen_yield} kg O₂/yr</span>
+                    <span className="text-[10px] text-teal-400 block font-mono">Sink: {telemetry.co2_offset} tons CO₂</span>
+                  </div>
+                </div>
+
+                <div className="text-xs space-y-2 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
+                  <div className="flex justify-between text-slate-300">
+                    <span>Saplings Procurement ({telemetry.trees_needed} units):</span>
+                    <span className="text-white font-bold">₹{budgetData.saplings_procurement_inr.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-300">
+                    <span>Protective Guards & Geo-tagging:</span>
+                    <span className="text-white font-bold">₹{budgetData.guards_and_infrastructure_inr.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-300">
+                    <span>Digging, Labor & Plantation Drive:</span>
+                    <span className="text-white font-bold">₹{budgetData.labor_and_plantation_inr.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-300">
+                    <span>1-Year Drip Irrigation & Maintenance:</span>
+                    <span className="text-white font-bold">₹{budgetData.maintenance_first_year_inr.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Native Species Recommendations */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-gray-900">High Oxygen Native Species</h3>
