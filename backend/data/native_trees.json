@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Peepal (Ficus religiosa)",
+    "pm_sink_score": "High",
+    "co2_absorption_kg_yr": 35.0,
+    "canopy_spread_m2": 16.0,
+    "suitability": "Severe AQI / High Dust corridors"
+  },
+  {
+    "name": "Neem (Azadirachta indica)",
+    "pm_sink_score": "Very High",
+    "co2_absorption_kg_yr": 28.0,
+    "canopy_spread_m2": 14.0,
+    "suitability": "High PM2.5 / Low Maintenance urban roads"
+  },
+  {
+    "name": "Karanj (Pongamia pinnata)",
+    "pm_sink_score": "Medium",
+    "co2_absorption_kg_yr": 22.0,
+    "canopy_spread_m2": 12.0,
+    "suitability": "Industrial gas tolerance / Dry soil"
+  },
+  {
+    "name": "Arjun (Terminalia arjuna)",
+    "pm_sink_score": "High",
+    "co2_absorption_kg_yr": 30.0,
+    "canopy_spread_m2": 15.0,
+    "suitability": "High Traffic & Urban heat islands"
+  }
+]
