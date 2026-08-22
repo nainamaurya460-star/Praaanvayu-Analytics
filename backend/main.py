@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
 from services.air_quality import fetch_air_quality
 from services.tree_calculator import calculate_tree_deficit
+from services.cv_engine import analyze_canopy_image
 
 app = FastAPI(
     title="PraanVayu Analytics Engine",
@@ -12,7 +13,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS setup for frontend dashboard integration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,10 +44,8 @@ async def analyze_zone(payload: AnalyzeZoneRequest):
         center_lat = (payload.lat_min + payload.lat_max) / 2.0
         center_lng = (payload.lng_min + payload.lng_max) / 2.0
 
-        # Ingest live telemetry
         telemetry = await fetch_air_quality(lat=center_lat, lon=center_lng)
 
-        # Calculate exact tree deficit
         deficit_results = calculate_tree_deficit(
             total_area_sqm=payload.total_area_sqm,
             plantable_area_sqm=payload.plantable_area_sqm,
@@ -63,6 +61,19 @@ async def analyze_zone(payload: AnalyzeZoneRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis pipeline error: {str(e)}")
+
+@app.post("/api/analyze-canopy-upload")
+async def analyze_canopy_upload(file: UploadFile = File(...)):
+    try:
+        image_bytes = await file.read()
+        cv_result = analyze_canopy_image(image_bytes)
+        return {
+            "success": True,
+            "filename": file.filename,
+            "result": cv_result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Image processing failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
