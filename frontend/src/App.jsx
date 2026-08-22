@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   Wind, Trees, Droplets, Thermometer, Sparkles, 
-  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download
 } from 'lucide-react';
 
 const LANDMARK_PRESETS = [
@@ -16,42 +16,42 @@ const LANDMARK_PRESETS = [
   { name: "Mansarovar", lat: 26.8584, lng: 75.7675, zoom: 15 }
 ];
 
-const SPECIES_DETAILS = [
+const DEFAULT_SPECIES = [
   {
     name: "Peepal (Ficus religiosa)",
     scientific: "Ficus religiosa",
     image: "https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&w=600&q=80",
-    oxygen: "2,400 kg/year",
-    co2Sink: "1,200 kg/year",
-    badge: "24/7 Oxygen Sink",
-    suitability: "Best for water bodies & broad avenue greenbelts"
+    oxygen_kg_year: 2400,
+    co2_sink_kg_year: 1200,
+    badge: "24/7 Oxygen Producer (CAM)",
+    suitability: "Ideal for broad avenues, urban plazas, and lake perimeters"
   },
   {
-    name: "Khejri (State Tree)",
+    name: "Khejri (Prosopis cineraria)",
     scientific: "Prosopis cineraria",
     image: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=600&q=80",
-    oxygen: "1,650 kg/year",
-    co2Sink: "900 kg/year",
-    badge: "Extreme Drought Hardy",
-    suitability: "Essential for dry semi-arid land & soil binding"
+    oxygen_kg_year: 1650,
+    co2_sink_kg_year: 900,
+    badge: "State Tree of Rajasthan",
+    suitability: "Thrives in dry, semi-arid terrain with zero irrigation"
   },
   {
     name: "Neem (Azadirachta indica)",
     scientific: "Azadirachta indica",
     image: "https://images.unsplash.com/photo-1502082553048-f009c37129b9?auto=format&fit=crop&w=600&q=80",
-    oxygen: "1,850 kg/year",
-    co2Sink: "950 kg/year",
-    badge: "Air Purifier Leader",
-    suitability: "High dust and PM2.5 trapping near highways"
+    oxygen_kg_year: 1850,
+    co2_sink_kg_year: 950,
+    badge: "Natural Bio-Filter",
+    suitability: "Dense dust & PM2.5 trapping near industrial highways"
   },
   {
     name: "Arjun (Terminalia arjuna)",
     scientific: "Terminalia arjuna",
     image: "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80",
-    oxygen: "1,950 kg/year",
-    co2Sink: "1,100 kg/year",
+    oxygen_kg_year: 1950,
+    co2_sink_kg_year: 1100,
     badge: "Riparian Specialist",
-    suitability: "Lake banks, ponds & high moisture ground"
+    suitability: "Recommended along lake banks & river drainage corridors"
   }
 ];
 
@@ -73,14 +73,14 @@ function MapClickHandler({ onSelectArea }) {
         [lat - offset, lng - offset],
         [lat + offset, lng + offset]
       ];
-      onSelectArea(newBounds, lat, lng, `Custom Point (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)`);
+      onSelectArea(newBounds, lat, lng, `Target (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)`);
     }
   });
   return null;
 }
 
 export default function App() {
-  const [mapCenter, setMapCenter] = useState([26.9537, 75.8463]); // Default Jal Mahal
+  const [mapCenter, setMapCenter] = useState([26.9537, 75.8463]);
   const [mapZoom, setMapZoom] = useState(14);
   const [bounds, setBounds] = useState([
     [26.9457, 75.8383],
@@ -95,10 +95,11 @@ export default function App() {
   
   const [telemetry, setTelemetry] = useState({
     aqi: 218,
+    aqi_status: "Very Unhealthy (Severe)",
     pm25: 134.5,
     humidity: 38,
     temp: 34,
-    canopy_pct: 8.4,
+    canopy_pct: 14.8,
     plantable_area: 14200,
     total_area: 48000,
     current_trees: 112,
@@ -106,14 +107,15 @@ export default function App() {
     pollution_drop_pct: 38
   });
 
-  const chartData = [
-    { time: '06:00 AM', aqi: 170, pm25: 98 },
-    { time: '09:00 AM', aqi: 245, pm25: 155 },
-    { time: '12:00 PM', aqi: 218, pm25: 134 },
-    { time: '03:00 PM', aqi: 195, pm25: 120 },
-    { time: '06:00 PM', aqi: 260, pm25: 172 },
-    { time: '09:00 PM', aqi: 275, pm25: 185 },
-  ];
+  const [speciesList, setSpeciesList] = useState(DEFAULT_SPECIES);
+
+  const [chartData, setChartData] = useState([
+    { time: '06:00', aqi: 170, pm25: 98 },
+    { time: '10:00', aqi: 245, pm25: 155 },
+    { time: '14:00', aqi: 218, pm25: 134 },
+    { time: '18:00', aqi: 260, pm25: 172 },
+    { time: '22:00', aqi: 275, pm25: 185 },
+  ]);
 
   const handleSelectArea = async (newBounds, lat, lng, locationLabel) => {
     setBounds(newBounds);
@@ -129,19 +131,35 @@ export default function App() {
       };
       const res = await axios.post("http://localhost:8000/api/analyze-zone", payload);
       if (res.data?.status === "success") {
-        setTelemetry(prev => ({
-          ...prev,
-          aqi: res.data.telemetry.aqi || 220,
-          pm25: res.data.telemetry.pm25 || 130,
-          canopy_pct: res.data.vegetation.canopy_pct || 9.2,
-          plantable_area: res.data.vegetation.plantable_area_m2 || 12400,
-          trees_needed: res.data.action_plan.trees_needed || 580
-        }));
+        const d = res.data;
+        if (d.location_name) {
+          setActiveLocationName(d.location_name);
+        }
+        setTelemetry({
+          aqi: d.telemetry.aqi,
+          aqi_status: d.telemetry.aqi_status || "Active Telemetry",
+          pm25: d.telemetry.pm25,
+          humidity: d.telemetry.humidity,
+          temp: d.telemetry.temperature,
+          canopy_pct: d.vegetation.canopy_pct,
+          plantable_area: d.vegetation.plantable_area_m2,
+          total_area: d.vegetation.total_area_m2,
+          current_trees: d.vegetation.estimated_current_trees || Math.round(d.vegetation.existing_canopy_m2 / 35),
+          trees_needed: d.action_plan.trees_needed,
+          pollution_drop_pct: d.action_plan.pollution_drop_pct
+        });
+
+        if (d.telemetry.hourly_curve && d.telemetry.hourly_curve.length > 0) {
+          setChartData(d.telemetry.hourly_curve);
+        }
+        if (d.action_plan.recommended_species && d.action_plan.recommended_species.length > 0) {
+          setSpeciesList(d.action_plan.recommended_species);
+        }
       }
     } catch (e) {
-      console.warn("Backend local fallback active.");
+      console.warn("Backend local fallback active.", e);
     } finally {
-      setTimeout(() => setProcessing(false), 700);
+      setTimeout(() => setProcessing(false), 600);
     }
   };
 
@@ -190,12 +208,15 @@ export default function App() {
     handleSelectArea(newBounds, preset.lat, preset.lng, preset.name);
   };
 
+  const handleExportPDF = () => {
+    window.print();
+  };
+
   return (
     <div className="flex flex-col h-screen bg-[#070b14] text-slate-100 font-sans">
       
       {/* TOP HEADER */}
       <header className="px-6 py-3 bg-[#0d1527] border-b border-emerald-950/60 shadow-xl flex items-center justify-between z-10 gap-4">
-        {/* Title */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
             <Trees className="w-6 h-6" />
@@ -231,8 +252,8 @@ export default function App() {
           </div>
         </form>
 
-        {/* Quick Presets */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Quick Presets & Export Button */}
+        <div className="flex items-center gap-2 shrink-0">
           <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
             {LANDMARK_PRESETS.map((loc, i) => (
               <button
@@ -248,6 +269,15 @@ export default function App() {
               </button>
             ))}
           </div>
+
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 rounded-xl text-xs font-bold transition shadow-sm"
+            title="Download Execution Report"
+          >
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>Export Report</span>
+          </button>
         </div>
       </header>
 
@@ -317,7 +347,7 @@ export default function App() {
                   </div>
                   <div className="text-3xl font-black text-red-400 font-mono mt-2">{telemetry.aqi}</div>
                   <span className="inline-block mt-2 px-2 py-0.5 text-[11px] font-bold rounded bg-red-950/80 text-red-300 border border-red-800">
-                    High Health Risk
+                    {telemetry.aqi_status}
                   </span>
                 </div>
 
@@ -327,7 +357,7 @@ export default function App() {
                     <Activity className="w-4 h-4 text-amber-400" />
                   </div>
                   <div className="text-3xl font-black text-amber-400 font-mono mt-2">{telemetry.pm25}</div>
-                  <span className="text-xs text-slate-400 mt-2 block font-mono">µg/m³ (Severe Level)</span>
+                  <span className="text-xs text-slate-400 mt-2 block font-mono">µg/m³ (WHO Threshold Exceeded)</span>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-[#0e162a] border border-blue-500/30 shadow-lg">
@@ -353,7 +383,7 @@ export default function App() {
                 <div className="flex justify-between items-center mb-4">
                   <div>
                     <h3 className="text-sm font-bold text-slate-200">Diurnal Pollution Curve</h3>
-                    <p className="text-[11px] text-slate-400">Hourly trajectory for {activeLocationName}</p>
+                    <p className="text-[11px] text-slate-400">Live 24h trajectory for {activeLocationName}</p>
                   </div>
                   <span className="text-xs text-emerald-400 font-mono font-semibold">Sensor Stream</span>
                 </div>
@@ -398,7 +428,7 @@ export default function App() {
                   <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
                     <span className="text-[11px] text-slate-400 block">Total Land Area</span>
                     <span className="text-base font-bold font-mono text-white">{(telemetry.total_area / 10000).toFixed(2)} Ha</span>
-                    <span className="text-[10px] text-slate-500 font-mono">({telemetry.total_area.toLocaleString()} m²)</span>
+                    <span className="text-[10px] text-slate-500 font-mono">({Math.round(telemetry.total_area).toLocaleString()} m²)</span>
                   </div>
                   <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
                     <span className="text-[11px] text-slate-400 block">Current Trees</span>
@@ -408,7 +438,7 @@ export default function App() {
                   <div className="p-3 rounded-xl bg-slate-900/80 border border-emerald-600/40">
                     <span className="text-[11px] text-emerald-300 block font-semibold">Trees Needed</span>
                     <span className="text-base font-bold font-mono text-emerald-400">+{telemetry.trees_needed} Target</span>
-                    <span className="text-[10px] text-emerald-500 font-mono">Open: {telemetry.plantable_area} m²</span>
+                    <span className="text-[10px] text-emerald-500 font-mono">Open: {Math.round(telemetry.plantable_area).toLocaleString()} m²</span>
                   </div>
                 </div>
 
@@ -425,7 +455,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4">
-                  {SPECIES_DETAILS.map((tree, idx) => (
+                  {speciesList.map((tree, idx) => (
                     <div key={idx} className="p-4 rounded-2xl bg-[#0e162a] border border-slate-800 flex gap-4 hover:border-emerald-500/50 transition">
                       <img 
                         src={tree.image} 
@@ -446,11 +476,11 @@ export default function App() {
                         <div className="grid grid-cols-2 gap-2 mt-3 text-xs bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
                           <div>
                             <span className="text-slate-400 text-[10px] block">O₂ Produced:</span>
-                            <span className="font-bold text-emerald-400 font-mono">{tree.oxygen}</span>
+                            <span className="font-bold text-emerald-400 font-mono">{tree.oxygen_kg_year || 1800} kg/year</span>
                           </div>
                           <div>
                             <span className="text-slate-400 text-[10px] block">CO₂ Absorbed:</span>
-                            <span className="font-bold text-teal-300 font-mono">{tree.co2Sink}</span>
+                            <span className="font-bold text-teal-300 font-mono">{tree.co2_sink_kg_year || 950} kg/year</span>
                           </div>
                         </div>
 
