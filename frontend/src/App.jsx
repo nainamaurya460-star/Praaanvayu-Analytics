@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   Wind, Trees, Droplets, Thermometer, Sparkles, 
-  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick
 } from 'lucide-react';
 
 const LANDMARK_PRESETS = [
@@ -77,7 +77,7 @@ function MapClickHandler({ onSelectArea }) {
         [lat - offset, lng - offset],
         [lat + offset, lng + offset]
       ];
-      onSelectArea(newBounds, lat, lng, `Target (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)`);
+      onSelectArea(newBounds, lat, lng, `Target Point (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)`);
     }
   });
   return null;
@@ -329,6 +329,11 @@ export default function App() {
             <MapPin className="w-4 h-4 text-emerald-400" />
             Active: <span className="font-bold text-emerald-400">{activeLocationName}</span>
           </div>
+
+          <div className="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 shadow-lg flex items-center gap-1.5">
+            <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
+            Click anywhere on map to reposition target zone
+          </div>
         </div>
 
         {/* DASHBOARD TABS */}
@@ -541,14 +546,18 @@ export default function App() {
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 mt-3 text-xs bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80 print:bg-gray-50 print:border-gray-200">
+                        <div className="grid grid-cols-3 gap-2 mt-3 text-xs bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80 print:bg-gray-50 print:border-gray-200">
                           <div>
                             <span className="text-slate-400 text-[10px] block print:text-gray-500">O₂ Produced:</span>
-                            <span className="font-bold text-emerald-400 font-mono print:text-emerald-700">{tree.oxygen_kg_year || 1800} kg/year</span>
+                            <span className="font-bold text-emerald-400 font-mono print:text-emerald-700">{tree.oxygen_kg_year || 1800} kg/yr</span>
                           </div>
                           <div>
-                            <span className="text-slate-400 text-[10px] block print:text-gray-500">CO₂ Absorbed:</span>
-                            <span className="font-bold text-teal-300 font-mono print:text-teal-700">{tree.co2_sink_kg_year || 950} kg/year</span>
+                            <span className="text-slate-400 text-[10px] block print:text-gray-500">CO₂ Sink:</span>
+                            <span className="font-bold text-teal-300 font-mono print:text-teal-700">{tree.co2_sink_kg_year || 950} kg/yr</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 text-[10px] block print:text-gray-500">Unit Cost:</span>
+                            <span className="font-bold text-blue-400 font-mono print:text-blue-700">₹{tree.cost_per_sapling_inr || 125}</span>
                           </div>
                         </div>
 
