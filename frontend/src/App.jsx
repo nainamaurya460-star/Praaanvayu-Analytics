@@ -55,8 +55,10 @@ import {
   Target,
   TreeDeciduous,
   Layers,
-  CheckCircle,
 } from "lucide-react";
+
+// Dynamic Backend URL for Local vs Production (Vercel & Render)
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 const PRESETS = {
   "Jal Mahal": { lat: 26.9537, lng: 75.8463 },
@@ -216,17 +218,17 @@ export default function App() {
   const [inspectModalTree, setInspectModalTree] = useState(null);
 
   const [telemetry, setTelemetry] = useState({
-    aqi: 263,
-    aqi_status: "Very Unhealthy (Severe)",
-    pm25: 142.5,
-    humidity: 38,
-    temperature: 33.2,
-    canopy_pct: 26.8,
-    water_pct: 12.4,
-    water_surface_m2: 31000,
-    plantable_area: 145000,
+    aqi: 215,
+    aqi_status: "Unhealthy (Live Stream)",
+    pm25: 98.4,
+    humidity: 42,
+    temperature: 32.0,
+    canopy_pct: 18.5,
+    water_pct: 12.0,
+    water_surface_m2: 30000,
+    plantable_area: 140000,
     total_area: 250000,
-    current_trees: 1914,
+    current_trees: 1320,
     trees_needed: 4150,
     pollution_drop_pct: 38,
     oxygen_yield: "7,470,000",
@@ -246,11 +248,11 @@ export default function App() {
 
   const [speciesList] = useState(DEFAULT_SPECIES);
   const [chartData, setChartData] = useState([
-    { time: "06:00", aqi: 210, pm25: 98 },
-    { time: "10:00", aqi: 285, pm25: 154 },
-    { time: "14:00", aqi: 250, pm25: 130 },
-    { time: "18:00", aqi: 310, pm25: 175 },
-    { time: "22:00", aqi: 265, pm25: 140 },
+    { time: "06:00", aqi: 180, pm25: 75 },
+    { time: "10:00", aqi: 230, pm25: 110 },
+    { time: "14:00", aqi: 205, pm25: 95 },
+    { time: "18:00", aqi: 260, pm25: 125 },
+    { time: "22:00", aqi: 215, pm25: 98 },
   ]);
 
   const validateEmail = (val) => {
@@ -271,49 +273,6 @@ export default function App() {
     if (newBounds) setBounds(newBounds);
     if (locationLabel) setActiveLocationName(locationLabel);
 
-    const seed = Math.abs(Math.sin(lat * 12.9898 + lng * 78.233));
-    const dynAqi = Math.round(180 + seed * 120);
-    const dynPm25 = Number((75 + seed * 85).toFixed(1));
-    const dynTemp = Number((28 + seed * 8).toFixed(1));
-    const dynHumidity = Math.round(35 + seed * 35);
-    const dynCanopy = Number((14 + seed * 18).toFixed(1));
-    const dynWater = Number((6 + seed * 14).toFixed(1));
-    const dynTreesNeeded = Math.round(2800 + seed * 2600);
-    const dynTotalArea = Math.round(220000 + seed * 80000);
-    const existingCanopyM2 = Math.round(dynTotalArea * (dynCanopy / 100));
-    const dynCurrentTrees = Math.round(existingCanopyM2 / 35);
-    const dynPlantable = Math.round(dynTotalArea * (1 - dynCanopy / 100 - dynWater / 100) * 0.55);
-
-    setTelemetry({
-      aqi: dynAqi,
-      aqi_status: dynAqi > 200 ? "Very Unhealthy (Severe Deficit)" : "Unhealthy (Active Stream)",
-      pm25: dynPm25,
-      temperature: dynTemp,
-      humidity: dynHumidity,
-      canopy_pct: dynCanopy,
-      water_pct: dynWater,
-      water_surface_m2: Math.round(dynTotalArea * (dynWater / 100)),
-      trees_needed: dynTreesNeeded,
-      total_area: dynTotalArea,
-      plantable_area: dynPlantable,
-      current_trees: dynCurrentTrees,
-      pollution_drop_pct: 38,
-      oxygen_yield: (dynTreesNeeded * 1800).toLocaleString(),
-      co2_offset: Math.round(dynTreesNeeded * 0.9).toLocaleString(),
-    });
-
-    const totalBudg = Math.round(dynTreesNeeded * 775);
-    setBudgetData({
-      cost_per_tree_inr: 775,
-      total_budget_inr: totalBudg,
-      total_budget_lakhs: Number((totalBudg / 100000).toFixed(2)),
-      saplings_procurement_inr: Math.round(dynTreesNeeded * 125),
-      guards_and_infrastructure_inr: Math.round(dynTreesNeeded * 250),
-      labor_and_plantation_inr: Math.round(dynTreesNeeded * 200),
-      maintenance_first_year_inr: Math.round(dynTreesNeeded * 200),
-      estimated_completion_days: Math.max(14, Math.round(dynTreesNeeded / 150)),
-    });
-
     try {
       let payload = {};
       if (polygonData && polygonData.length >= 3) {
@@ -325,26 +284,62 @@ export default function App() {
           lng_min: Math.min(newBounds[0][1], newBounds[1][1]),
           lng_max: Math.max(newBounds[0][1], newBounds[1][1]),
         };
+      } else {
+        payload = { lat_min: lat - 0.008, lat_max: lat + 0.008, lng_min: lng - 0.008, lng_max: lng + 0.008 };
       }
 
-      const res = await axios.post("http://localhost:8000/api/analyze-zone", payload, { timeout: 3000 });
+      // Real Backend API Call (Open-Meteo & Satellite CV)
+      const res = await axios.post(`${API_BASE_URL}/api/analyze-zone`, payload, { timeout: 8000 });
+
       if (res.data && res.data.status === "success") {
         const d = res.data;
         if (d.location_name) setActiveLocationName(d.location_name);
+
+        const realAqi = d.telemetry?.aqi || 180;
+        const realPm25 = d.telemetry?.pm25 || 85.0;
+        const realTemp = d.telemetry?.temperature || 31.0;
+        const realHum = d.telemetry?.humidity || 40;
+        const realCanopy = d.vegetation?.canopy_pct || 18.0;
+        const realWater = d.vegetation?.water_coverage_pct || 10.0;
+        const realTreesNeeded = d.action_plan?.trees_needed || 3500;
+        const realTotalArea = d.vegetation?.total_area_m2 || 250000;
+        const realPlantable = d.vegetation?.plantable_area_m2 || 120000;
+        const realCurrentTrees = d.vegetation?.estimated_current_trees || 1200;
+
+        setTelemetry({
+          aqi: realAqi,
+          aqi_status: d.telemetry?.aqi_status || (realAqi > 200 ? "Very Unhealthy (Severe)" : "Unhealthy (Active Stream)"),
+          pm25: realPm25,
+          temperature: realTemp,
+          humidity: realHum,
+          canopy_pct: realCanopy,
+          water_pct: realWater,
+          water_surface_m2: d.vegetation?.water_surface_m2 || Math.round(realTotalArea * (realWater / 100)),
+          trees_needed: realTreesNeeded,
+          total_area: realTotalArea,
+          plantable_area: realPlantable,
+          current_trees: realCurrentTrees,
+          pollution_drop_pct: d.action_plan?.pollution_drop_pct || 38,
+          oxygen_yield: (d.action_plan?.total_oxygen_yield_kg_per_year || realTreesNeeded * 1800).toLocaleString(),
+          co2_offset: d.action_plan?.total_co2_offset_tons || Math.round(realTreesNeeded * 0.9),
+        });
+
         if (d.vegetation?.heatmap_overlay_base64) {
           setHeatmapOverlay(d.vegetation.heatmap_overlay_base64);
+        } else {
+          setHeatmapOverlay(generateClientFallbackHeatmap(realCanopy, realWater));
         }
-        if (d.vegetation?.estimated_current_trees) {
-          setTelemetry((prev) => ({
-            ...prev,
-            current_trees: d.vegetation.estimated_current_trees,
-            trees_needed: d.action_plan?.trees_needed || prev.trees_needed,
-            plantable_area: d.vegetation.plantable_area_m2 || prev.plantable_area,
-          }));
+
+        if (d.telemetry?.hourly_curve && d.telemetry.hourly_curve.length > 0) {
+          setChartData([...d.telemetry.hourly_curve]);
+        }
+        if (d.action_plan?.budget_breakdown) {
+          setBudgetData({ ...d.action_plan.budget_breakdown });
         }
       }
-    } catch {
-      setHeatmapOverlay(generateClientFallbackHeatmap(dynCanopy, dynWater));
+    } catch (e) {
+      console.warn("Backend connection failed. Using fallback simulation data.");
+      setHeatmapOverlay(generateClientFallbackHeatmap(18, 12));
     }
   };
 
@@ -402,11 +397,11 @@ export default function App() {
   };
 
   const timelineGraphData = [0, 1, 2, 3, 4, 5].map((y) => {
-    const baseAqi = telemetry.aqi || 263;
+    const baseAqi = telemetry.aqi || 215;
     const maturity = y === 0 ? 0 : Math.min(1, 0.15 + 0.85 * Math.pow(y / 5, 1.2));
     const drop = Math.round(baseAqi * ((telemetry.pollution_drop_pct || 38) / 100) * maturity);
     const projAqi = Math.max(35, baseAqi - drop);
-    const canopy = Number(Math.min(48, (telemetry.canopy_pct || 26.8) + 20 * maturity).toFixed(1));
+    const canopy = Number(Math.min(48, (telemetry.canopy_pct || 18.5) + 20 * maturity).toFixed(1));
     const cooling = Number((0.42 * y * maturity).toFixed(1));
     const o2 = y === 0 ? 0 : Math.round((telemetry.trees_needed || 4150) * 1.8 * maturity);
 
