@@ -5,7 +5,9 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line
 } from 'recharts';
 import { 
-  Wind, Trees, Droplets, Thermometer, Sparkles, 
+  Wind, Trees, Droplets,
+  ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, IndianRupee, Clock, Layers, MousePointerClick, Square, Pentagon, RotateCcw, Eye, EyeOff, Waves
+
   ShieldCheck, ChevronRight, Activity, MapPin, Search, Loader2, Download, 
   IndianRupee, Clock, Square, Pentagon, RotateCcw, MousePointerClick, Sliders, 
   Eye, EyeOff, Lock, Mail, ArrowRight, LogOut, CheckCircle2, Leaf, Home, 
@@ -79,6 +81,43 @@ const DEFAULT_SPECIES = [
   }
 ];
 
+function generateClientFallbackHeatmap(canopyPct = 15, waterPct = 12) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  
+  // Crimson Red default (Deficit / Urban density)
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
+  ctx.fillRect(0, 0, 256, 256);
+  
+  // Emerald Green Clusters (Canopy)
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.75)';
+  const numClusters = Math.floor((canopyPct / 100) * 45) + 5;
+  for (let i = 0; i < numClusters; i++) {
+    const cx = Math.random() * 230 + 10;
+    const cy = Math.random() * 230 + 10;
+    const rad = Math.random() * 25 + 12;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Cobalt Blue Clusters / Bands (Rivers & Water Bodies)
+  ctx.fillStyle = 'rgba(59, 130, 246, 0.80)';
+  const numWater = Math.floor((waterPct / 100) * 20) + 2;
+  for (let i = 0; i < numWater; i++) {
+    const wx = Math.random() * 220 + 20;
+    const wy = Math.random() * 220 + 20;
+    const wrad = Math.random() * 35 + 18;
+    ctx.beginPath();
+    ctx.arc(wx, wy, wrad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
 function MapController({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
@@ -127,6 +166,9 @@ export default function App() {
   ]);
   const [selectionMode, setSelectionMode] = useState('box');
   const [polygonPoints, setPolygonPoints] = useState([]);
+
+  const [heatmapOverlay, setHeatmapOverlay] = useState(() => generateClientFallbackHeatmap(18, 14));
+  const [showHeatmap, setShowHeatmap] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [heatmapOverlay, setHeatmapOverlay] = useState(null);
   
@@ -139,6 +181,19 @@ export default function App() {
   const [inspectModalTree, setInspectModalTree] = useState(null);
 
   const [telemetry, setTelemetry] = useState({
+
+    aqi: 218,
+    aqi_status: "Very Unhealthy (Severe)",
+    pm25: 134.5,
+    humidity: 38,
+    temp: 34,
+    canopy_pct: 14.8,
+    water_pct: 12.4,
+    water_surface_m2: 5952,
+    plantable_area: 14200,
+    total_area: 48000,
+    current_trees: 112,
+    trees_needed: 620,
     aqi: 178,
     aqi_status: "Unhealthy (Active Stream)",
     pm25: 88.5,
@@ -149,6 +204,7 @@ export default function App() {
     total_area: 250000,
     current_trees: 1320,
     trees_needed: 4150,
+
     pollution_drop_pct: 38,
     oxygen_yield: "7,470,000",
     co2_offset: "3,735"
@@ -291,6 +347,34 @@ export default function App() {
       const res = await axios.post("http://localhost:8000/api/analyze-zone", payload, { timeout: 4000 });
       if (res.data && res.data.status === "success") {
         const d = res.data;
+
+        if (d.location_name) {
+          setActiveLocationName(d.location_name);
+        }
+
+        if (d.vegetation?.heatmap_overlay_base64) {
+          setHeatmapOverlay(d.vegetation.heatmap_overlay_base64);
+        } else {
+          setHeatmapOverlay(generateClientFallbackHeatmap(d.vegetation?.canopy_pct || 15, d.vegetation?.water_coverage_pct || 10));
+        }
+
+        setTelemetry({
+          aqi: d.telemetry.aqi,
+          aqi_status: d.telemetry.aqi_status || "Active Sensor Feed",
+          pm25: d.telemetry.pm25,
+          humidity: d.telemetry.humidity,
+          temp: d.telemetry.temperature,
+          canopy_pct: d.vegetation.canopy_pct,
+          water_pct: d.vegetation.water_coverage_pct || 0,
+          water_surface_m2: d.vegetation.water_surface_m2 || Math.round((d.vegetation.water_coverage_pct || 0) * d.vegetation.total_area_m2 / 100),
+          plantable_area: d.vegetation.plantable_area_m2,
+          total_area: d.vegetation.total_area_m2,
+          current_trees: d.vegetation.estimated_current_trees || Math.round(d.vegetation.existing_canopy_m2 / 35),
+          trees_needed: d.action_plan.trees_needed,
+          pollution_drop_pct: d.action_plan.pollution_drop_pct,
+          oxygen_yield: (d.action_plan.total_oxygen_yield_kg_per_year || 0).toLocaleString(),
+          co2_offset: d.action_plan.total_co2_offset_tons || 0
+
         if (d.location_name) setActiveLocationName(d.location_name);
 
         setTelemetry({
@@ -306,7 +390,7 @@ export default function App() {
           trees_needed: d.action_plan.trees_needed || dynTrees,
           pollution_drop_pct: d.action_plan.pollution_drop_pct || 38,
           oxygen_yield: (d.action_plan.total_oxygen_yield_kg_per_year || (dynTrees * 1800)).toLocaleString(),
-          co2_offset: d.action_plan.total_co2_offset_tons || Math.round(dynTrees * 0.9)
+          co2_offset: d.action_plan.total_co2_offset_tons 
         });
 
         if (d.vegetation && d.vegetation.heatmap_overlay_base64) {
@@ -318,17 +402,25 @@ export default function App() {
         if (d.action_plan.budget_breakdown) {
           setBudgetData({ ...d.action_plan.budget_breakdown });
         }
-      }
-    } catch (e) {
+      console.warn("Backend local fallback active.", e);
+      setHeatmapOverlay(generateClientFallbackHeatmap(14, 10));
+    } finally {
+      setProcessing(false)
       console.warn("Backend synced instantly with local telemetry.");
     } finally {
       setTimeout(() => setProcessing(false), 200);
+
     }
   };
 
   useEffect(() => {
     handleSelectArea(bounds, 26.9537, 75.8463, "Jal Mahal, Jaipur");
   }, []);
+
+
+  const executeSearch = async (targetText) => {
+    const query = (targetText || searchQuery || "").trim();
+    if (!query) return;
 
   const jumpToLocation = (name) => {
     const p = PRESETS[name];
@@ -349,16 +441,35 @@ export default function App() {
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
+
     setSearching(true);
     try {
-      const res = await axios.get(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`
-      );
-      if (res.data && res.data.length > 0) {
-        const place = res.data[0];
-        const lat = parseFloat(place.lat);
-        const lng = parseFloat(place.lon);
-        const displayName = place.display_name.split(',')[0];
+      const encoded = encodeURIComponent(query);
+      let lat = null, lng = null, displayName = query;
+
+      try {
+        const pRes = await axios.get(`https://photon.komoot.io/api/?q=${encoded}&limit=1`, { timeout: 4000 });
+        if (pRes.data?.features?.length > 0) {
+          const f = pRes.data.features[0];
+          lng = f.geometry.coordinates[0];
+          lat = f.geometry.coordinates[1];
+          displayName = f.properties.name || f.properties.city || query;
+        }
+      } catch (err) {
+        console.warn("Photon fallback", err);
+      }
+
+
+      if (!lat || !lng) {
+        const osmRes = await axios.get(`https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1`, { timeout: 4000 });
+        if (osmRes.data && osmRes.data.length > 0) {
+          lat = parseFloat(osmRes.data[0].lat);
+          lng = parseFloat(osmRes.data[0].lon);
+          displayName = osmRes.data[0].display_name.split(',')[0];
+        }
+      }
+
+      if (lat && lng) 
 
         const offset = 0.008;
         const newBounds = [
@@ -367,22 +478,49 @@ export default function App() {
         ];
 
         setMapCenter([lat, lng]);
+        setMapZoom(15);
+
+
+        setMapCenter([lat, lng]);
         setMapZoom(14);
+
         setBounds(newBounds);
         setPolygonPoints([]);
+        setActiveLocationName(displayName);
         handleSelectArea(newBounds, lat, lng, displayName);
         setSearchQuery("");
         setCurrentScreen('studio');
       } else {
+
+        alert(`Location "${query}" nahi mili! Kripya kisi prasiddh shahar ya landmark ka naam dalein.`);
+      }
+    } catch (err) {
+      console.error("Search failed", err);
+      alert("Search request complete nahi ho payi. Ek baar internet check karein.");
         alert("Location not found! Try another city/landmark.");
       }
     } catch (err) {
       console.error("Geocoding failed", err);
+
     } finally {
       setSearching(false);
     }
   };
 
+
+  const jumpToLocation = (preset) => {
+    setMapCenter([preset.lat, preset.lng]);
+    setMapZoom(preset.zoom);
+    setPolygonPoints([]);
+    setSearchQuery("");
+    const offset = 0.008;
+    const newBounds = [
+      [preset.lat - offset, preset.lng - offset],
+      [preset.lat + offset, preset.lng + offset]
+    ];
+    handleSelectArea(newBounds, preset.lat, preset.lng, preset.name);
+  };
+=======
   // =========================================================================
   // VIEW 1: THUNDERSTORM LOGIN GATEWAY
   // =========================================================================
@@ -409,6 +547,7 @@ export default function App() {
           <div className="absolute inset-0 bg-cyan-200/10 mix-blend-color-dodge pointer-events-none animate-[ping_3.8s_cubic-bezier(0,0,0.2,1)_infinite]" />
         </div>
 
+
         {/* Panel */}
         <div className="relative z-10 w-full max-w-md p-8 sm:p-10 rounded-3xl bg-slate-950/80 backdrop-blur-3xl border border-cyan-500/40 shadow-[0_25px_100px_rgba(0,0,0,0.95)] space-y-6">
           <div className="text-center space-y-3">
@@ -418,6 +557,24 @@ export default function App() {
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-400 rounded-full animate-ping" />
               </div>
             </div>
+
+
+  return (
+    <div className="flex flex-col h-screen bg-[#070b14] text-slate-100 font-sans">
+      
+      {/* HEADER */}
+      <header className="px-6 py-3 bg-[#0d1527] border-b border-emerald-950/60 shadow-xl flex items-center justify-between z-10 gap-4 print:hidden">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+            <Trees className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              Welcome to <span className="text-emerald-400">PraanVayu</span> Analytics Engine
+            </h1>
+            <p className="text-[11px] text-slate-400">
+              Precision Canopy Deficit, Atmospheric Telemetry & River Basin Mapping.
+            </p>
 
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[11px] font-mono mb-2">
@@ -432,7 +589,33 @@ export default function App() {
                 <span>Satellite Computer Vision & Climate Action</span>
               </p>
             </div>
+
           </div>
+
+
+        {/* Search Bar */}
+        <div className="flex-1 max-w-md relative flex items-center">
+          <Search className="w-4 h-4 text-emerald-400 absolute left-3.5 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                executeSearch();
+              }
+            }}
+            placeholder="Search city, river bank, landmark (e.g. Jal Mahal, Kukas)..."
+            className="w-full pl-10 pr-24 py-2 bg-slate-900/90 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+          />
+          <button
+            type="button"
+            onClick={() => executeSearch()}
+            disabled={searching}
+            className="absolute right-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+          >
+            {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Search"}
 
           {emailError && (
             <div className="p-3 rounded-xl bg-red-950/90 border border-red-500/60 text-red-200 text-xs flex items-start gap-2 shadow-xl animate-shake">
@@ -544,6 +727,7 @@ export default function App() {
           >
             <span>Next Page (Studio)</span>
             <ArrowUpRight className="w-4 h-4 text-slate-950 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+
           </button>
         </div>
 
@@ -702,11 +886,19 @@ export default function App() {
         </div>
       </header>
 
+
+      {/* PROCESSING TOAST */}
+      {processing && (
+        <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-slate-950 px-4 py-2 font-black text-center text-sm shadow-md animate-pulse flex items-center justify-center gap-2 print:hidden">
+          <Sparkles className="w-5 h-5" />
+          Analyzing satellite pixels, river boundaries & canopy models for {activeLocationName}...
+
       {/* SUB-HEADER BANNER (TRIPO STYLE ANNOUNCEMENT) */}
       <div className="relative z-10 px-6 py-1.5 bg-gradient-to-r from-emerald-950/60 via-slate-900 to-teal-950/60 border-b border-emerald-900/30 flex items-center justify-between text-xs text-slate-300 print:hidden select-none">
         <div className="flex items-center gap-2">
           <Zap className="w-3.5 h-3.5 text-emerald-400" />
           <span>Active Target: <strong className="text-emerald-300">{activeLocationName}</strong> • Satellite Spectral Band: <strong className="text-teal-300">ExG Excess Green (2G-R-B)</strong></span>
+
         </div>
         <div className="flex gap-2">
           {Object.keys(PRESETS).map((name) => (
@@ -735,7 +927,24 @@ export default function App() {
               attribution='&copy; Esri World Imagery'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
+            
+            {/* Heatmap Overlay with Greenery, Concrete Deficit & Blue Water */}
+            {showHeatmap && heatmapOverlay && (
+              <ImageOverlay
+                url={heatmapOverlay}
+                bounds={bounds}
+                opacity={0.72}
+              />
+            )}
+
+            {/* Bounding Borders */}
             {selectionMode === 'box' && (
+
+              <Rectangle bounds={bounds} pathOptions={{ color: '#38BDF8', weight: 2, fillOpacity: 0, dashArray: '4' }} />
+            )}
+            {selectionMode === 'polygon' && polygonPoints.length >= 3 && (
+              <Polygon positions={polygonPoints} pathOptions={{ color: '#38BDF8', weight: 2, fillOpacity: 0.15 }} />
+
               <Rectangle bounds={bounds} pathOptions={{ color: '#10B981', weight: 2.5, fillOpacity: 0.15, dashArray: '5' }} />
             )}
             {selectionMode === 'polygon' && polygonPoints.length >= 3 && (
@@ -743,7 +952,9 @@ export default function App() {
             )}
             {showHeatmap && heatmapOverlay && (
               <ImageOverlay url={heatmapOverlay} bounds={bounds} opacity={0.65} />
+
             )}
+
             <MapController center={mapCenter} zoom={mapZoom} />
             <MapClickHandler 
               onSelectArea={handleSelectArea} 
@@ -752,6 +963,82 @@ export default function App() {
               setPolygonPoints={setPolygonPoints} 
             />
           </MapContainer>
+
+
+          {/* Location & Vision Controls */}
+          <div className="absolute top-4 left-4 right-4 z-[1000] flex justify-between items-center pointer-events-none">
+            <div className="bg-slate-900/90 backdrop-blur border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-slate-200 shadow-xl flex items-center gap-2 pointer-events-auto">
+              <MapPin className="w-4 h-4 text-emerald-400" />
+              Active: <span className="font-bold text-emerald-400">{activeLocationName}</span>
+            </div>
+
+            <div className="bg-slate-900/95 backdrop-blur border border-slate-700 p-1 rounded-xl shadow-xl flex items-center gap-1.5 pointer-events-auto">
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  showHeatmap ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold' : 'text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                {showHeatmap ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-500" />}
+                AI Vision: {showHeatmap ? 'ON' : 'OFF'}
+              </button>
+
+              <div className="w-[1px] h-3.5 bg-slate-700" />
+
+              <button
+                onClick={() => { setSelectionMode('box'); setPolygonPoints([]); }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  selectionMode === 'box' ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <Square className="w-3 h-3 inline mr-1" /> Box
+              </button>
+              <button
+                onClick={() => { setSelectionMode('polygon'); setPolygonPoints([]); }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                  selectionMode === 'polygon' ? 'bg-sky-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <Pentagon className="w-3 h-3 inline mr-1" /> Polygon
+              </button>
+              {selectionMode === 'polygon' && polygonPoints.length > 0 && (
+                <button
+                  onClick={resetPolygon}
+                  title="Reset Polygon"
+                  className="p-1 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-lg transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom Legends */}
+          <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2">
+            <div className="bg-slate-900/90 backdrop-blur border border-slate-700/80 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 shadow-lg flex items-center gap-1.5">
+              <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
+              {selectionMode === 'box' 
+                ? 'Click anywhere on map to reposition target zone' 
+                : `Click 3+ points to define boundary (Selected: ${polygonPoints.length})`}
+            </div>
+
+            {/* 3-Color AI Vision Legend */}
+            {showHeatmap && (
+              <div className="bg-slate-900/95 backdrop-blur border border-slate-700 px-3 py-2 rounded-xl text-[10px] text-slate-300 shadow-xl flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block shadow-sm"></span>
+                  <span className="font-semibold text-emerald-400">Greenery / Canopy</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-blue-500 inline-block shadow-sm"></span>
+                  <span className="font-semibold text-blue-400">Rivers & Water Bodies</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-red-500 inline-block shadow-sm"></span>
+                  <span className="font-semibold text-red-400">Target Deficit (Built-up)</span>
+                </div>
+              </div>
+            )}
 
           <div className="absolute top-4 right-4 z-[1000] bg-slate-950/90 backdrop-blur-xl border border-slate-800 p-1.5 rounded-xl shadow-2xl flex items-center gap-1">
             <button
@@ -785,14 +1072,42 @@ export default function App() {
           <div className="absolute bottom-4 left-4 z-[1000] bg-slate-950/85 backdrop-blur-xl border border-slate-800 px-3 py-1.5 rounded-xl text-[11px] text-slate-300 shadow-lg flex items-center gap-1.5">
             <MousePointerClick className="w-3.5 h-3.5 text-emerald-400" />
             Click anywhere on map to reposition target zone
+
           </div>
         </div>
 
         {/* RIGHT: TRIPO-STYLE DASHBOARD & 3D ASSETS */}
         <div className="w-1/2 h-full overflow-y-auto p-6 space-y-6 bg-[#070a10] print:w-full print:bg-white print:text-black">
-          
+     
+          <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 print:hidden">
+            <button
+              onClick={() => setActiveTab('diagnostics')}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                activeTab === 'diagnostics' 
+                  ? 'bg-emerald-500 text-slate-950 shadow-md' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Activity className="w-4 h-4" /> 1. Pollution & Environmental Diagnostics
+            </button>
+            <button
+              onClick={() => setActiveTab('solution')}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                activeTab === 'solution' 
+                  ? 'bg-emerald-500 text-slate-950 shadow-md' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Trees className="w-4 h-4" /> 2. Afforestation Plan & River Buffers
+            </button>
+          </div>
+
+          {/* TAB 1: DIAGNOSTICS */}
+          {(activeTab === 'diagnostics' || window.matchMedia('print').matches) && (
+
           {/* TAB 1: DIAGNOSTICS & TELEMETRY */}
           {activeTab === 'diagnostics' && (
+
             <div className="space-y-6">
               
               {/* Telemetry Cards Grid */}
@@ -815,8 +1130,16 @@ export default function App() {
                   </div>
                   <div className="text-3xl font-black text-amber-400 font-mono">{telemetry.pm25}</div>
                   <span className="text-xs text-slate-400 block font-mono">µg/m³ (WHO Limit Exceeded)</span>
-                </div>
-
+        
+                <div className="p-4 rounded-2xl bg-[#0e162a] border border-blue-500/30 shadow-lg print:border-gray-300 print:bg-gray-100">
+                  <div className="flex justify-between items-center text-slate-400 text-xs print:text-gray-600">
+                    <span>River & Water Coverage</span>
+                    <Waves className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div className="text-3xl font-black text-blue-400 font-mono mt-2">{telemetry.water_pct}%</div>
+                  <span className="text-xs text-slate-400 mt-2 block print:text-gray-600 font-mono">
+                    {telemetry.water_surface_m2 ? `${Math.round(telemetry.water_surface_m2).toLocaleString()} m² Water Basin` : 'Surface Moisture'}
+                  </span>
                 <div className="p-5 rounded-2xl bg-[#0d111a] border border-blue-500/30 shadow-xl space-y-2">
                   <div className="flex justify-between items-center text-slate-400 text-xs">
                     <span>Humidity</span>
@@ -1066,12 +1389,16 @@ export default function App() {
                   <div className="flex justify-between text-slate-300">
                     <span>4. 1-Year Drip Irrigation & Maintenance:</span>
                     <span className="text-white font-bold">₹{budgetData.maintenance_first_year_inr.toLocaleString()}</span>
-                  </div>
+
+              {/* Native Species Recommendations */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider print:text-gray-900">High Oxygen Native Species</h3>
+                  <span className="text-xs text-emerald-400 font-mono font-semibold print:text-emerald-700">Ranked by O₂ Yield & Riparian Shield</span>
                 </div>
-              </div>
 
             </div>
-          )}
+          )} main
 
         </div>
       </div>
