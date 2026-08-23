@@ -204,7 +204,7 @@ def extract_vegetation_mask_cv(img_bgr: np.ndarray) -> Tuple[np.ndarray, float]:
 
     # Estimate mature trees
     current_trees_estimate = int(existing_tree_area_m2 / 35.0)
-=======
+
     lower_green_2 = np.array([20, 25, 20])
     upper_green_2 = np.array([35, 180, 180])
     mask_hsv_2 = cv2.inRange(hsv, lower_green_2, upper_green_2)
